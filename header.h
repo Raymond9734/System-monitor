@@ -32,6 +32,8 @@
 #include <netinet/in.h>
 #include <arpa/inet.h>
 #include <map>
+//for string stream operations.
+#include <sstream>
 
 using namespace std;
 
@@ -98,10 +100,22 @@ struct RX
 
 // student TODO : system stats
 string CPUinfo();
+std::string getLoggedInUser();
 const char *getOsName();
+int getTotalProcesses();
+std::string getHostName();
+std::string getCpuInfo();
+float GetCPULoad();
+float GetFanSPeed();
+float GetTemprature();
 
 // student TODO : memory and processes
 
 // student TODO : network
+
+//Render  Functions
+void RenderSystemInfo();
+void RenderSystemMonitor();
+void RenderGraph(const char *label, float *data, int data_size, float y_scale, bool animate);
 
 #endif

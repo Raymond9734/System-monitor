@@ -1,4 +1,3 @@
-#
 # Cross Platform Makefile
 # Compatible with MSYS2/MINGW, Ubuntu 14.04.1 and Mac OS X
 #
@@ -20,6 +19,7 @@ SOURCES = main.cpp
 SOURCES += system.cpp
 SOURCES += mem.cpp
 SOURCES += network.cpp
+SOURCES += render.cpp
 SOURCES += $(IMGUI_DIR)/imgui.cpp $(IMGUI_DIR)/imgui_demo.cpp $(IMGUI_DIR)/imgui_draw.cpp $(IMGUI_DIR)/imgui_tables.cpp $(IMGUI_DIR)/imgui_widgets.cpp
 SOURCES += $(IMGUI_DIR)/backend/imgui_impl_sdl.cpp $(IMGUI_DIR)/backend/imgui_impl_opengl3.cpp
 OBJS = $(addsuffix .o, $(basename $(notdir $(SOURCES))))
@@ -28,6 +28,11 @@ UNAME_S := $(shell uname -s)
 CXXFLAGS = -I$(IMGUI_DIR) -I$(IMGUI_DIR)/backend
 CXXFLAGS += -g -Wall -Wformat
 LIBS =
+
+# Colors for output
+COLOR_GREEN=\033[0;32m
+COLOR_RED=\033[0;31m
+COLOR_RESET=\033[0m
 
 ##---------------------------------------------------------------------
 ## OPENGL LOADER
@@ -109,19 +114,20 @@ endif
 	$(CC) $(CFLAGS) -c -o $@ $<
 
 all: $(EXE) clean run
-	@echo Build complete for $(ECHO_MESSAGE)
+	@echo -e "$(COLOR_GREEN)Build complete for $(ECHO_MESSAGE)$(COLOR_RESET)"
 
 $(EXE): $(OBJS)
 	$(CXX) -o $@ $^ $(CXXFLAGS) $(LIBS)
-	
+	@if [ $$? -eq 0 ]; then echo -e "$(COLOR_GREEN)Executable built successfully$(COLOR_RESET)"; else echo -e "$(COLOR_RED)Build failed$(COLOR_RESET)"; exit 1; fi
 
 clean:
 	rm -f $(OBJS)
+	@echo -e "$(COLOR_GREEN)Cleaned up$(COLOR_RESET)"
 
 # Run target
 run: $(EXE)
-	./$(EXE)
+	@./$(EXE) || echo -e "$(COLOR_RED)Error occurred while running $(EXE)$(COLOR_RESET)"
+	@echo -e "\n"
 
 # Phony targets
 .PHONY: all clean run
-	 
