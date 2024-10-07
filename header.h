@@ -35,6 +35,14 @@
 //for string stream operations.
 #include <sstream>
 
+
+#include <string>
+
+#include <array>
+#include <memory>
+#include <cstdio>
+#include <iterator>
+#include <stdexcept>
 using namespace std;
 
 struct CPUStats
@@ -51,17 +59,15 @@ struct CPUStats
     long long int guestNice;
 };
 
-// processes `stat`
-struct Proc
-{
+// Structure to hold process information
+struct ProcessInfo {
     int pid;
-    string name;
-    char state;
-    long long int vsize;
-    long long int rss;
-    long long int utime;
-    long long int stime;
+    std::string name;
+    std::string state;
+    float cpuUsage;
+    float memoryUsage;
 };
+
 
 struct IP4
 {
@@ -108,8 +114,16 @@ std::string getCpuInfo();
 float GetCPULoad();
 float GetFanSPeed();
 float GetTemprature();
+void GetMemoryUsage(float &physUsedPercentage, float &swapUsedPercentage);
+void GetDiskUsage(float &diskUsedPercentage);
 
 // student TODO : memory and processes
+float GetCPUUsage(int pid);
+float GetMemUsage(int pid);
+std::vector<ProcessInfo> FetchProcessList();
+void RenderProcessMonitorUI();
+std::pair<std::pair<long, long>, std::pair<long, long>> getMemUsage();
+std::pair<long, long> getDiskUsage();
 
 // student TODO : network
 
@@ -117,5 +131,6 @@ float GetTemprature();
 void RenderSystemInfo();
 void RenderSystemMonitor();
 void RenderGraph(const char *label, float *data, int data_size, float y_scale, bool animate);
+void RenderMemoryProcessMonitor();
 
 #endif
