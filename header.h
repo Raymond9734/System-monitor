@@ -35,6 +35,7 @@
 //for string stream operations.
 #include <sstream>
 
+#include <netdb.h>
 
 #include <string>
 
@@ -69,39 +70,15 @@ struct ProcessInfo {
 };
 
 
-struct IP4
-{
-    char *name;
-    char addressBuffer[INET_ADDRSTRLEN];
-};
-
-struct Networks
-{
-    vector<IP4> ip4s;
-};
-
-struct TX
-{
-    int bytes;
-    int packets;
-    int errs;
-    int drop;
-    int fifo;
-    int frame;
-    int compressed;
-    int multicast;
-};
-
-struct RX
-{
-    int bytes;
-    int packets;
-    int errs;
-    int drop;
-    int fifo;
-    int colls;
-    int carrier;
-    int compressed;
+struct NetworkInterface {
+    std::string name;
+    std::string ipv4;
+    struct {
+        long long bytes, packets, errs, drop, fifo, frame, compressed, multicast;
+    } rx;
+    struct {
+        long long bytes, packets, errs, drop, fifo, colls, carrier, compressed;
+    } tx;
 };
 
 // student TODO : system stats
@@ -126,11 +103,14 @@ std::pair<std::pair<long, long>, std::pair<long, long>> getMemUsage();
 std::pair<long, long> getDiskUsage();
 
 // student TODO : network
+std::vector<NetworkInterface> getNetworkInfo();
+std::string formatBytes(long long bytes);
 
 //Render  Functions
 void RenderSystemInfo();
 void RenderSystemMonitor();
 void RenderGraph(const char *label, float *data, int data_size, float y_scale, bool animate);
 void RenderMemoryProcessMonitor();
+void RenderNetworkInfo();
 
 #endif
