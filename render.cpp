@@ -239,3 +239,119 @@ void RenderProcessMonitorUI() {
         ImGui::EndTabBar(); // End the tab bar
     }
 }
+// Function to render network statistics with progress bars
+void RenderNetworkInfo() {
+    auto interfaces = getNetworkInfo();
+    // Display network interfaces and their IPv4 addresses
+    ImGui::Text("Network Interfaces:");
+    ImGui::Separator();
+
+    for (const auto& iface : interfaces) {
+        ImGui::Text("%s: %s", iface.name.c_str(), iface.ipv4.c_str());
+        float usage = static_cast<float>(iface.rx.bytes + iface.tx.bytes) / (2.0f * 1024 * 1024 * 1024); // 2GB max
+        std::string label = formatBytes(iface.rx.bytes + iface.tx.bytes);
+        ImGui::ProgressBar(usage, ImVec2(-1, 0), label.c_str());
+        ImGui::Spacing();
+    }
+
+    ImGui::Separator();
+    ImGui::Spacing();
+
+    // Tab bar for RX and TX
+    if (ImGui::BeginTabBar("NetworkTabs")) {
+        if (ImGui::BeginTabItem("RX")) {
+            ImGui::BeginTable("RXTable", 9, ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg);
+            ImGui::TableSetupColumn("Interface");
+            ImGui::TableSetupColumn("Bytes");
+            ImGui::TableSetupColumn("Packets");
+            ImGui::TableSetupColumn("Errs");
+            ImGui::TableSetupColumn("Drop");
+            ImGui::TableSetupColumn("Fifo");
+            ImGui::TableSetupColumn("Frame");
+            ImGui::TableSetupColumn("Compressed");
+            ImGui::TableSetupColumn("Multicast");
+            ImGui::TableHeadersRow();
+
+            for (const auto& iface : interfaces) {
+                ImGui::TableNextRow();
+                ImGui::TableNextColumn();
+                ImGui::Text("%s", iface.name.c_str());
+                ImGui::TableNextColumn();
+                ImGui::Text("%lld", iface.rx.bytes);
+                ImGui::TableNextColumn();
+                ImGui::Text("%lld", iface.rx.packets);
+                ImGui::TableNextColumn();
+                ImGui::Text("%lld", iface.rx.errs);
+                ImGui::TableNextColumn();
+                ImGui::Text("%lld", iface.rx.drop);
+                ImGui::TableNextColumn();
+                ImGui::Text("%lld", iface.rx.fifo);
+                ImGui::TableNextColumn();
+                ImGui::Text("%lld", iface.rx.frame);
+                ImGui::TableNextColumn();
+                ImGui::Text("%lld", iface.rx.compressed);
+                ImGui::TableNextColumn();
+                ImGui::Text("%lld", iface.rx.multicast);
+            }
+            ImGui::EndTable();
+
+            ImGui::Text("RX Usage");
+            for (const auto& iface : interfaces) {
+                float usage = static_cast<float>(iface.rx.bytes) / (2.0f * 1024 * 1024 * 1024); // 2GB max
+                std::string label = formatBytes(iface.rx.bytes);
+                ImGui::Text("%s", iface.name.c_str());
+                ImGui::ProgressBar(usage, ImVec2(-1, 0), label.c_str());
+            }
+
+            ImGui::EndTabItem();
+        }
+
+        if (ImGui::BeginTabItem("TX")) {
+            ImGui::BeginTable("TXTable", 9, ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg);
+            ImGui::TableSetupColumn("Interface");
+            ImGui::TableSetupColumn("Bytes");
+            ImGui::TableSetupColumn("Packets");
+            ImGui::TableSetupColumn("Errs");
+            ImGui::TableSetupColumn("Drop");
+            ImGui::TableSetupColumn("Fifo");
+            ImGui::TableSetupColumn("Colls");
+            ImGui::TableSetupColumn("Carrier");
+            ImGui::TableSetupColumn("Compressed");
+            ImGui::TableHeadersRow();
+
+            for (const auto& iface : interfaces) {
+                ImGui::TableNextRow();
+                ImGui::TableNextColumn();
+                ImGui::Text("%s", iface.name.c_str());
+                ImGui::TableNextColumn();
+                ImGui::Text("%lld", iface.tx.bytes);
+                ImGui::TableNextColumn();
+                ImGui::Text("%lld", iface.tx.packets);
+                ImGui::TableNextColumn();
+                ImGui::Text("%lld", iface.tx.errs);
+                ImGui::TableNextColumn();
+                ImGui::Text("%lld", iface.tx.drop);
+                ImGui::TableNextColumn();
+                ImGui::Text("%lld", iface.tx.fifo);
+                ImGui::TableNextColumn();
+                ImGui::Text("%lld", iface.tx.colls);
+                ImGui::TableNextColumn();
+                ImGui::Text("%lld", iface.tx.carrier);
+                ImGui::TableNextColumn();
+                ImGui::Text("%lld", iface.tx.compressed);
+            }
+            ImGui::EndTable();
+
+            ImGui::Text("TX Usage");
+            for (const auto& iface : interfaces) {
+                float usage = static_cast<float>(iface.tx.bytes) / (2.0f * 1024 * 1024 * 1024); // 2GB max
+                std::string label = formatBytes(iface.tx.bytes);
+                ImGui::Text("%s", iface.name.c_str());
+                ImGui::ProgressBar(usage, ImVec2(-1, 0), label.c_str());
+            }
+
+            ImGui::EndTabItem();
+        }
+        ImGui::EndTabBar();
+    }
+}
