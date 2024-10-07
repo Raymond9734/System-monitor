@@ -43,7 +43,8 @@ void memoryProcessesWindow(const char *id, ImVec2 size, ImVec2 position)
     ImGui::SetWindowSize(id, size);
     ImGui::SetWindowPos(id, position);
 
-    // student TODO : add code here for the memory and process information
+    RenderMemoryProcessMonitor();
+    RenderProcessMonitorUI();
 
     ImGui::End();
 }
