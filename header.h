@@ -36,7 +36,9 @@
 #include <sstream>
 
 #include <netdb.h>
-
+#include <chrono>
+#include <thread>
+#include <future>
 #include <string>
 
 #include <array>
@@ -46,18 +48,14 @@
 #include <stdexcept>
 using namespace std;
 
-struct CPUStats
-{
-    long long int user;
-    long long int nice;
-    long long int system;
-    long long int idle;
-    long long int iowait;
-    long long int irq;
-    long long int softirq;
-    long long int steal;
-    long long int guest;
-    long long int guestNice;
+// Struct to hold the system CPU times
+struct CPUStats {
+    unsigned long long user, nice, system, idle, iowait, irq, softirq, steal;
+};
+
+// Struct to hold the process CPU times
+struct ProcessStats {
+    unsigned long long utime, stime, cutime, cstime;
 };
 
 // Structure to hold process information
