@@ -83,69 +83,6 @@ std::pair<long, long> getDiskUsage()
   return {usedStorage, totalStorage};
 }
 
-float GetCPUUsage(int pid) {
-    std::string statPath = "/proc/" + std::to_string(pid) + "/stat";
-    std::ifstream statFile(statPath);
-
-    if (!statFile.is_open()) {
-        std::cerr << "Error: Unable to open " << statPath << std::endl;
-        return -1.0;
-    }
-
-    std::string statLine;
-    std::getline(statFile, statLine);
-    statFile.close();
-
-    std::istringstream iss(statLine);
-    std::vector<std::string> statFields;
-    std::string field;
-
-    while (iss >> field) {
-        statFields.push_back(field);
-    }
-
-    if (statFields.size() < 22) {
-        std::cerr << "Error: Unexpected format in " << statPath << std::endl;
-        return -1.0;
-    }
-
-    unsigned long long utime, stime;
-    try {
-        utime = std::stoull(statFields[13]);
-        stime = std::stoull(statFields[14]);
-    } catch (const std::exception& e) {
-        std::cerr << "Error: Unable to parse utime and stime" << std::endl;
-        return -1.0;
-    }
-
-    unsigned long long total_time = utime + stime;
-    long hertz = sysconf(_SC_CLK_TCK);
-    double total_time_sec = static_cast<double>(total_time) / hertz;
-
-    double uptime;
-    std::ifstream uptimeFile("/proc/uptime");
-    if (!(uptimeFile >> uptime)) {
-        std::cerr << "Error: Unable to read system uptime" << std::endl;
-        return -1.0;
-    }
-    uptimeFile.close();
-
-    double starttime;
-    try {
-        starttime = std::stod(statFields[21]) / hertz;
-    } catch (const std::exception& e) {
-        std::cerr << "Error: Unable to parse process start time" << std::endl;
-        return 0.0;
-    }
-
-    double seconds = uptime - starttime;
-    double cpu_usage = 100.0 * (total_time_sec / seconds);
-    // TOTAL_PROCESSES++;
-
-    return cpu_usage;
-}
-
-
 float GetMemUsage(int pid){
     std::string path = "/proc/" + std::to_string(pid) + "/status";
     std::ifstream statusFile(path);
@@ -164,4 +101,61 @@ float GetMemUsage(int pid){
         }
     }
     return memUsage;
+}
+// Function to get CPU usage for a specific process
+float GetCPUUsage(int pid) {
+    std::string pidStr = std::to_string(pid);
+    std::string statPath = "/proc/" + pidStr + "/stat";
+
+    // Take two measurements with a delay
+    auto measure = [&]() -> std::pair<long, float> {
+        std::ifstream statFile(statPath);
+        if (!statFile.is_open()) {
+            std::cerr << "Could not open file: " << statPath << std::endl;
+            return {-1, -1.0};
+        }
+
+        std::string statLine;
+        std::getline(statFile, statLine);
+        std::istringstream iss(statLine);
+        std::vector<std::string> statFields;
+        std::string field;
+
+        while (iss >> field) {
+            statFields.push_back(field);
+        }
+
+        long utime = std::stol(statFields[13]);
+        long stime = std::stol(statFields[14]);
+        long total_time = utime + stime;
+
+        float uptime;
+        std::ifstream uptimeFile("/proc/uptime");
+        if (uptimeFile.is_open()) {
+            uptimeFile >> uptime;
+        } else {
+            std::cerr << "Could not open /proc/uptime" << std::endl;
+            return {-1, -1.0};
+        }
+
+        return {total_time, uptime};
+    };
+
+    auto [total_time1, uptime1] = measure();
+    if (total_time1 < 0) return -1.0;
+
+    std::this_thread::sleep_for(std::chrono::milliseconds(3000));  
+
+    auto [total_time2, uptime2] = measure();
+    if (total_time2 < 0) return -1.0;
+
+    long hertz = sysconf(_SC_CLK_TCK);
+    
+    float total_time_diff = static_cast<float>(total_time2 - total_time1) / hertz;
+    float uptime_diff = uptime2 - uptime1;
+
+    // Calculate CPU usage percentage
+    float cpuUsage = 100.0 * (total_time_diff / uptime_diff);
+
+    return cpuUsage;
 }
