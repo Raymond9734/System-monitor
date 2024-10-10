@@ -56,62 +56,79 @@ void GetDiskUsage(float &diskUsedPercentage) {
 }
 
 
+// Function to fetch process information concurrently
+ProcessInfo FetchProcessInfo(int pid) {
+    ProcessInfo process;
+    process.pid = pid;
+
+    // Fetch command line
+    std::string cmdPath = "/proc/" + std::to_string(pid) + "/cmdline";
+    std::ifstream cmdFile(cmdPath);
+    if (cmdFile) {
+        std::getline(cmdFile, process.name, '\0'); // Read until null character
+    } else {
+        std::cerr << "Failed to read cmdline for PID " << pid << std::endl;
+        return process; // Return with empty name
+    }
+
+    // Fetch process state
+    std::ifstream statFile("/proc/" + std::to_string(pid) + "/stat");
+    std::string state;
+    if (statFile) {
+        statFile >> pid >> process.name >> state;
+    } else {
+        std::cerr << "Failed to read stat for PID " << pid << std::endl;
+        return process; // Return with empty state
+    }
+
+    // Determine process state
+    if (state == "I") {
+        process.state = "(Idle)";
+    } else if (state == "R") {
+        process.state = "Running";
+    } else {
+        process.state = "Sleeping";
+    }
+
+    // Fetch CPU and memory usage
+    process.cpuUsage = GetCPUUsage(pid);
+    process.memoryUsage = GetMemUsage(pid);
+
+    return process;
+}
+
 std::vector<ProcessInfo> FetchProcessList() {
     std::vector<ProcessInfo> processes;
     
     DIR *dir = opendir("/proc");
-     if (!dir) {
+    if (!dir) {
         std::cerr << "Failed to open /proc directory." << std::endl;
         return processes; // Return an empty vector if failed
     }
     
-
     struct dirent *entry;
-    while ((entry = readdir(dir))!= nullptr){
-        if (entry->d_type == DT_DIR&& isdigit(entry->d_name[0])){
+    std::vector<std::future<ProcessInfo>> futures; // To store futures for concurrent processing
+
+    while ((entry = readdir(dir)) != nullptr) {
+        if (entry->d_type == DT_DIR && isdigit(entry->d_name[0])) {
             int pid = std::stoi(entry->d_name);
-            std::string cmdPath = "/proc/" + std::to_string(pid) + "/cmdline";
-            std::ifstream cmdFile(cmdPath);
-            std::string name;
-             
-            if (cmdFile) {
-                std::getline(cmdFile, name, '\0'); // Read until null character
-            } else {
-                std::cerr << "Failed to read cmdline for PID " << pid << std::endl;
-                continue; // Skip this process if cmdline cannot be read
-            } //ProcessName
 
-            std::ifstream statFile("/proc/" + std::to_string(pid) + "/stat");
-            std::string state;
-            if (statFile) {
-                statFile >> pid >> name >> state;
-            } else {
-                std::cerr << "Failed to read stat for PID " << pid << std::endl;
-                continue; // Skip this process if stat cannot be read
-            }
-            
-
-            ProcessInfo process;
-            process.pid = pid;
-            process.name = name;
-            if(state == "I") {
-                process.state = "(Idle)";
-            } else if (state == "R"){
-                process.state = "Running";
-            } else {
-                process.state = "Sleeping";
-            }
-
-            process.cpuUsage = GetCPUUsage(pid);
-            process.memoryUsage = GetMemUsage(pid);
-
-            processes.push_back(process);
-
+            // Launch the process information fetching in a separate thread
+            futures.emplace_back(std::async(std::launch::async, FetchProcessInfo, pid));
         }
     }
-   
+
+    // Collect results from futures
+    for (auto& future : futures) {
+        ProcessInfo process = future.get();
+        if (process.pid != 0) { // Ensure we have a valid process
+            processes.push_back(process);
+        }
+    }
+
     if (closedir(dir) != 0) {
         std::cerr << "Failed to close /proc directory." << std::endl;
     }
+    
     return processes;
 }
