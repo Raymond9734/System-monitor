@@ -158,17 +158,18 @@ void RenderProcessMonitorUI() {
     static std::unordered_set<int> selectedPIDs; // To track selected processes by PID
     static int totalProcesses = 0; // To track total number of processes
 
-    // Time tracking for periodic refresh
-    static auto lastUpdate = std::chrono::steady_clock::now();
-    auto now = std::chrono::steady_clock::now();
-    auto elapsed = std::chrono::duration_cast<std::chrono::seconds>(now - lastUpdate);
-
-    // Refresh process list every 1 second
-    if (elapsed.count() >= 0.5) {
-        processList = FetchProcessList();
-        totalProcesses = processList.size(); // Update total processes
-        lastUpdate = now; // Reset the timer
-    }
+  
+    static std::future<void> futureTask;
+    // Refresh process list asynchronously if more than 1 second has passed
+   
+        if (!futureTask.valid() || futureTask.wait_for(std::chrono::seconds(0)) == std::future_status::ready) {
+            futureTask = std::async(std::launch::async, [&]()
+        {
+                processList = FetchProcessList(); 
+                totalProcesses = processList.size(); });
+            
+        }
+    
 
     // Tab bar
     if (ImGui::BeginTabBar("##Tabs")) { // Begin the tab bar
@@ -239,6 +240,7 @@ void RenderProcessMonitorUI() {
         ImGui::EndTabBar(); // End the tab bar
     }
 }
+
 // Function to render network statistics with progress bars
 void RenderNetworkInfo() {
     auto interfaces = getNetworkInfo();
@@ -248,7 +250,7 @@ void RenderNetworkInfo() {
 
     for (const auto& iface : interfaces) {
         ImGui::Text("%s: %s", iface.name.c_str(), iface.ipv4.c_str());
-        float usage = static_cast<float>(iface.rx.bytes + iface.tx.bytes) / (2.0f * 1024 * 1024 * 1024); // 2GB max
+        float usage = static_cast<float>(iface.rx.bytes + iface.tx.bytes) / (30.0f * 1024 * 1024 * 1024); // 30GB max
         std::string label = formatBytes(iface.rx.bytes + iface.tx.bytes);
         ImGui::ProgressBar(usage, ImVec2(-1, 0), label.c_str());
         ImGui::Spacing();
@@ -297,7 +299,7 @@ void RenderNetworkInfo() {
 
             ImGui::Text("RX Usage");
             for (const auto& iface : interfaces) {
-                float usage = static_cast<float>(iface.rx.bytes) / (2.0f * 1024 * 1024 * 1024); // 2GB max
+                float usage = static_cast<float>(iface.rx.bytes) / (30.0f * 1024 * 1024 * 1024); // 30GB max
                 std::string label = formatBytes(iface.rx.bytes);
                 ImGui::Text("%s", iface.name.c_str());
                 ImGui::ProgressBar(usage, ImVec2(-1, 0), label.c_str());
@@ -344,7 +346,7 @@ void RenderNetworkInfo() {
 
             ImGui::Text("TX Usage");
             for (const auto& iface : interfaces) {
-                float usage = static_cast<float>(iface.tx.bytes) / (2.0f * 1024 * 1024 * 1024); // 2GB max
+                float usage = static_cast<float>(iface.tx.bytes) / (30.0f * 1024 * 1024 * 1024); // 5GB max
                 std::string label = formatBytes(iface.tx.bytes);
                 ImGui::Text("%s", iface.name.c_str());
                 ImGui::ProgressBar(usage, ImVec2(-1, 0), label.c_str());
