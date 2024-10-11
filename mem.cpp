@@ -3,15 +3,24 @@
 
 
 // Function to get physical and virtual memory usage
-void GetMemoryUsage(float &physUsedPercentage, float &swapUsedPercentage) {
+void GetMemoryUsage(float &physUsedPercentage, float &swapUsedPercentage, 
+                    std::string &totalMemoryStr, std::string &usedMemoryStr, 
+                    std::string &totalSwapStr, std::string &usedSwapStr) {
     try {
-        // Retrieve memory usage by parsing `free -g`
+        // Retrieve memory usage, which now returns both numeric and string formats
         auto [memoryInfo, swapInfo] = getMemUsage();
 
-        long totalMemory = memoryInfo.first;  // Total RAM
-        long usedMemory = memoryInfo.second;   // Used RAM
-        long totalSwap = swapInfo.first;       // Total Swap
-        long usedSwap = swapInfo.second;       // Used Swap
+        // Extract the numeric and string values for memory (RAM)
+        long totalMemory = memoryInfo.first.first;     // Total RAM in KiB
+        long usedMemory = memoryInfo.second.first;     // Used RAM in KiB
+        totalMemoryStr = memoryInfo.first.second;      // Total RAM as string (e.g., "16G")
+        usedMemoryStr = memoryInfo.second.second;      // Used RAM as string (e.g., "4G")
+
+        // Extract the numeric and string values for swap
+        long totalSwap = swapInfo.first.first;         // Total Swap in KiB
+        long usedSwap = swapInfo.second.first;         // Used Swap in KiB
+        totalSwapStr = swapInfo.first.second;          // Total Swap as string (e.g., "2G")
+        usedSwapStr = swapInfo.second.second;          // Used Swap as string (e.g., "1G")
 
         // Calculate the percentage of used physical memory (RAM)
         if (totalMemory > 0) {
@@ -32,23 +41,27 @@ void GetMemoryUsage(float &physUsedPercentage, float &swapUsedPercentage) {
         std::cerr << "Error retrieving memory usage: " << e.what() << std::endl;
         physUsedPercentage = 0.0f;
         swapUsedPercentage = 0.0f;
+        totalMemoryStr = usedMemoryStr = totalSwapStr = usedSwapStr = "N/A";
     }
 }
 
 
 // Function to get disk usage
-void GetDiskUsage(float &diskUsedPercentage) {
+void GetDiskUsage(float &diskUsedPercentage,std::string &usedStorageStr,std::string &totalStorageStr) {
     try {
-        auto [used, total] = getDiskUsage();
+        auto [storageNum, storageStr] = getDiskUsage();
 
         // Ensure total disk space is greater than zero to avoid division by zero
-        if (total > 0) {
-        
-            diskUsedPercentage = (static_cast<float>(used) / static_cast<float>(total)) * 100;
+        if (storageNum.second > 0) {
+            diskUsedPercentage = (static_cast<float>(storageNum.first) / static_cast<float>(storageNum.second)) * 100;
         } else {
             diskUsedPercentage = 0.0f;  // Handle edge case of total disk space being 0
         }
-    } catch (const std::exception &e) {
+        usedStorageStr = storageStr.first;
+        totalStorageStr = storageStr.second;
+    }
+    catch (const std::exception &e)
+    {
         // Handle any exceptions that occur during disk usage retrieval
         std::cerr << "Error retrieving disk usage: " << e.what() << std::endl;
         diskUsedPercentage = 0.0f;  // Set to 0 in case of error
@@ -83,11 +96,21 @@ ProcessInfo FetchProcessInfo(int pid) {
 
     // Determine process state
     if (state == "I") {
-        process.state = "(Idle)";
+    process.state = "(Idle)";
     } else if (state == "R") {
         process.state = "Running";
-    } else {
+    } else if (state == "S") {
         process.state = "Sleeping";
+    } else if (state == "D") {
+        process.state = "USleep";
+    } else if (state == "T") {
+        process.state = "Stopped";
+    } else if (state == "Z") {
+        process.state = "Zombie";
+    } else if (state == "X") {
+        process.state = "Dead";
+    } else {
+        process.state = "Unknown State";
     }
 
     // Fetch CPU and memory usage
