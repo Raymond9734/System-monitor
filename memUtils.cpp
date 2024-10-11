@@ -6,12 +6,45 @@ std::vector<std::string> split(const std::string &s) {
     std::istringstream iss(s);
     return std::vector<std::string>((std::istream_iterator<std::string>(iss)), std::istream_iterator<std::string>());
 }
-std::pair<std::pair<long, long>, std::pair<long, long>> getMemUsage() {
+// Function to convert human-readable memory units to bytes (KB, MB, GB)
+long convertToBytes(const std::string& value) {
+    long number = std::stol(value.substr(0, value.size() - 1));
+    std::string unit = value.substr(value.size() - 2);
+    
+    if (unit == "Gi") {
+        return number * 1024 * 1024 * 1024;  // Convert GB to bytes
+    } else if (unit == "Mi") {
+        return number * 1024 * 1024;  // Convert MB to bytes
+    } else if (unit == "Ki") {
+        return number * 1024;  // Convert KB to bytes
+    } else {
+        return number;  // No recognized unit, return the number as is
+    }
+}
+std::string Format(const std::string& value) {
+    std::string upperV = value.substr(0, value.size() - 2);
+    std::string unit = value.substr(value.size() - 2);
+    
+     if (unit == "Gi") {
+       return upperV + "GB";   // Convert GB to bytes
+    } else if (unit == "Mi") {
+        return upperV + "MB";   // Convert MB to bytes
+    } else if (unit == "Ki") {
+        return upperV + "KB"; // Convert KB to bytes
+    } else {
+        return upperV;  // No recognized unit, return the number as is
+    }
+  
+}
+
+// Function to return memory and swap usage as numeric values and strings
+std::pair<std::pair<std::pair<long, std::string>, std::pair<long, std::string>>, 
+          std::pair<std::pair<long, std::string>, std::pair<long, std::string>>> getMemUsage() {
     std::array<char, 128> buffer;
     std::string result;
 
     // Use FILE* for pclose and provide correct type to unique_ptr
-    std::unique_ptr<FILE, int(*)(FILE*)> pipe(popen("free -g", "r"), pclose);
+    std::unique_ptr<FILE, int(*)(FILE*)> pipe(popen("free -h", "r"), pclose);
 
     if (!pipe) {
         throw std::runtime_error("popen() failed!");
@@ -23,33 +56,44 @@ std::pair<std::pair<long, long>, std::pair<long, long>> getMemUsage() {
 
     std::istringstream iss(result);
     std::string line;
-    std::string line2;
-    long totalMemory = 0;
-    long usedMemory = 0;
-    long totalSwap = 0;
-    long usedSwap = 0;
+    std::string memoryLine;
+    std::string swapLine;
+    std::string totalMemoryStr, usedMemoryStr;
+    std::string totalSwapStr, usedSwapStr;
 
     // Skip the first line which is the header
     std::getline(iss, line);
     // The second line contains the memory information (RAM)
-    std::getline(iss, line);
+    std::getline(iss, memoryLine);
     // The third line contains the swap information
-    std::getline(iss, line2);
+    std::getline(iss, swapLine);
 
-    std::istringstream memoryLine(line);
-    std::istringstream swapLine(line2);
+    std::istringstream memStream(memoryLine);
+    std::istringstream swapStream(swapLine);
     std::string temp;
 
     // Parse the second line for memory (RAM) values
-    memoryLine >> temp >> totalMemory >> usedMemory;
+    memStream >> temp >> totalMemoryStr >> usedMemoryStr;
     
     // Parse the third line for swap values
-    swapLine >> temp >> totalSwap >> usedSwap;
+    swapStream >> temp >> totalSwapStr >> usedSwapStr;
 
-    // Return a pair of pairs: {{totalMemory, usedMemory}, {totalSwap, usedSwap}}
-    return {{totalMemory, usedMemory}, {totalSwap, usedSwap}};
+    // Convert human-readable values to bytes
+    long totalMemory = convertToBytes(totalMemoryStr);
+    long usedMemory = convertToBytes(usedMemoryStr);
+    long totalSwap = convertToBytes(totalSwapStr);
+    long usedSwap = convertToBytes(usedSwapStr);
+
+    std::string newTotalMemoryStr = Format(totalMemoryStr);
+    std::string newUsedMemoryStr = Format(usedMemoryStr);
+    std::string newTotalSwapStr = Format(totalSwapStr);
+    std::string newUsedSwapStr = Format(usedSwapStr);
+
+    // Return a pair of pairs: {{totalMemory, usedMemory}, {totalSwap, usedSwap}} in both numeric and string format
+    return {{{totalMemory, newTotalMemoryStr}, {usedMemory, newUsedMemoryStr}}, 
+            {{totalSwap, newTotalSwapStr}, {usedSwap, newUsedSwapStr}}};
 }
-std::pair<long, long> getDiskUsage()
+std::pair< std::pair<long, long>, std::pair<std::string, std::string> > getDiskUsage()
 {
   std::array<char, 128> buffer;
   std::string result;
@@ -80,7 +124,7 @@ std::pair<long, long> getDiskUsage()
   long usedStorage = std::stol(used);
   long totalStorage = std::stol(size);
 
-  return {usedStorage, totalStorage};
+  return {{usedStorage, totalStorage},{used+"B", size+"B"}};
 }
 
 float GetMemUsage(int pid){
