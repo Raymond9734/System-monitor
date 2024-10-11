@@ -2,6 +2,7 @@
 #include <chrono>  // For time tracking
 #include <unordered_set>
 
+static std::vector<ProcessInfo> processList; // Cache process list
 
 void RenderSystemInfo() {
 
@@ -14,7 +15,7 @@ void RenderSystemInfo() {
 
     ImGui::Text("CPU: %s", CPUinfo().c_str());
 
-    ImGui::Text("Total Processes: %d", getTotalProcesses());
+    ImGui::Text("Total Processes: %d", processList.size());
 
 }
 void RenderGraph(const char* label, float* data, int data_size, float y_scale, bool animate) {
@@ -128,52 +129,62 @@ void RenderMemoryProcessMonitor() {
     float physMemUsage = 0.0f;
     float swapMemUsage = 0.0f;
     float diskUsage = 0.0f;
+    std::string totalMemoryStr;
+    std::string usedMemoryStr;
+    std::string totalSwapStr;
+    std::string usedSwapStr;
+    std::string usedStorageStr;
+    std::string totalStorageStr;
 
     // Get current system metrics
-    GetMemoryUsage(physMemUsage, swapMemUsage);
-    GetDiskUsage(diskUsage);
+    GetMemoryUsage(physMemUsage, swapMemUsage, totalMemoryStr, usedMemoryStr, totalSwapStr, usedSwapStr);
+    GetDiskUsage(diskUsage,usedStorageStr,totalStorageStr);
 
+    // Display memory information with human-readable strings
+    ImGui::Text("Physical Memory (RAM):");
+    ImGui::Text("Total: %s, Used: %s", totalMemoryStr.c_str(), usedMemoryStr.c_str());
+
+    // Display RAM usage with a progress bar
     char physMemLabel[32];
     sprintf(physMemLabel, "%.0f%%", physMemUsage);  // Format the percentage label
-
-    ImGui::Text("Physical Memory (RAM) Usage:");
     ImGui::ProgressBar(physMemUsage / 100.0f, ImVec2(0.0f, 30.0f), physMemLabel);
 
+    // Display swap information with human-readable strings
+    ImGui::Text("Virtual Memory (SWAP):");
+    ImGui::Text("Total: %s, Used: %s", totalSwapStr.c_str(), usedSwapStr.c_str());
+
+    // Display swap usage with a progress bar
     char swapMemLabel[32];
     sprintf(swapMemLabel, "%.0f%%", swapMemUsage);  // Format the percentage label
-
-    ImGui::Text("Virtual Memory (SWAP) Usage:");
     ImGui::ProgressBar(swapMemUsage / 100.0f, ImVec2(0.0f, 30.0f), swapMemLabel);
 
+    // Display disk usage with a progress bar
+    ImGui::Text("Disk Usage:");
+    ImGui::Text("Total: %s, Used: %s", totalStorageStr.c_str(), usedStorageStr.c_str());
     char diskUsageLabel[32];
     sprintf(diskUsageLabel, "%.0f%%", diskUsage);  // Format the percentage label
-
-    ImGui::Text("Disk Usage:");
     ImGui::ProgressBar(diskUsage / 100.0f, ImVec2(0.0f, 30.0f), diskUsageLabel);
-
 }
+
 void RenderProcessMonitorUI() {
     static char filterText[64] = ""; // Filter text buffer
-    static std::vector<ProcessInfo> processList; // Cache process list
     static std::unordered_set<int> selectedPIDs; // To track selected processes by PID
     static int totalProcesses = 0; // To track total number of processes
-
   
     static std::future<void> futureTask;
+
     // Refresh process list asynchronously if more than 1 second has passed
-   
-        if (!futureTask.valid() || futureTask.wait_for(std::chrono::seconds(0)) == std::future_status::ready) {
-            futureTask = std::async(std::launch::async, [&]()
+    if (!futureTask.valid() || futureTask.wait_for(std::chrono::seconds(0)) == std::future_status::ready) {
+        futureTask = std::async(std::launch::async, [&]()
         {
-                processList = FetchProcessList(); 
-                totalProcesses = processList.size(); });
-            
-        }
-    
+            processList = FetchProcessList(); 
+            totalProcesses = processList.size(); 
+        });
+    }
 
     // Tab bar
-    if (ImGui::BeginTabBar("##Tabs")) { // Begin the tab bar
-        if (ImGui::BeginTabItem("Processes")) { // Begin the tab item
+    if (ImGui::BeginTabBar("##Tabs")) {
+        if (ImGui::BeginTabItem("Processes")) {
 
             ImGui::Text("Total Number of Processes: %d", totalProcesses); 
             // Filter text box
@@ -182,8 +193,8 @@ void RenderProcessMonitorUI() {
             // Handle empty case gracefully
             if (processList.empty()) {
                 ImGui::Text("No processes found.");
-                ImGui::EndTabItem(); // End the tab item before return
-                ImGui::EndTabBar();  // End the tab bar before return
+                ImGui::EndTabItem();
+                ImGui::EndTabBar();
                 return;
             }
 
@@ -208,39 +219,49 @@ void RenderProcessMonitorUI() {
                     }
 
                     ImGui::TableNextRow();
+                    ImGui::PushID(process.pid);
 
-                    // Allow multiple row selection
                     bool isSelected = selectedPIDs.find(process.pid) != selectedPIDs.end();
-                    if (ImGui::Selectable("", isSelected, ImGuiSelectableFlags_SpanAllColumns)) {
-                        // Toggle selection
-                        if (isSelected) {
-                            selectedPIDs.erase(process.pid); // Remove from selection
-                        } else {
-                            selectedPIDs.insert(process.pid); // Add to selection
+
+                    // Set the background color for selected rows
+                    if (isSelected) {
+                        ImGui::TableSetBgColor(ImGuiTableBgTarget_RowBg1, IM_COL32(0, 128, 0, 255)); // Highlight color
+                    }
+
+                    // Make the entire row selectable
+                    if (ImGui::TableSetColumnIndex(0)) { // Start from the first column
+                        if (ImGui::Selectable("##WholeRowSelectable", isSelected, ImGuiSelectableFlags_SpanAllColumns | ImGuiSelectableFlags_AllowItemOverlap)) {
+                            if (isSelected) {
+                                selectedPIDs.erase(process.pid);
+                            } else {
+                                selectedPIDs.insert(process.pid);
+                            }
                         }
                     }
+
                     // Display process information in table columns
-                    ImGui::TableNextColumn(); // Move to PID column
+                    ImGui::TableSetColumnIndex(0);
                     ImGui::Text("%d", process.pid);  // PID
-                    ImGui::TableNextColumn(); // Move to Name column
+                    ImGui::TableSetColumnIndex(1);
                     ImGui::Text("%s", process.name.c_str());  // Name
-                    ImGui::TableNextColumn(); // Move to State column
+                    ImGui::TableSetColumnIndex(2);
                     ImGui::Text("%s", process.state.c_str());  // State
-                    ImGui::TableNextColumn(); // Move to CPU Usage column
+                    ImGui::TableSetColumnIndex(3);
                     ImGui::Text("%.2f", process.cpuUsage);  // CPU usage
-                    ImGui::TableNextColumn(); // Move to Memory Usage column
+                    ImGui::TableSetColumnIndex(4);
                     ImGui::Text("%.2f", process.memoryUsage);  // Memory usage
+
+                    ImGui::PopID();
                 }
 
                 ImGui::EndTable();
             }
 
-            ImGui::EndTabItem(); // End the tab item
+            ImGui::EndTabItem();
         }
-        ImGui::EndTabBar(); // End the tab bar
+        ImGui::EndTabBar();
     }
 }
-
 // Function to render network statistics with progress bars
 void RenderNetworkInfo() {
     auto interfaces = getNetworkInfo();
