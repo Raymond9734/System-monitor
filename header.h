@@ -89,16 +89,20 @@ std::string getCpuInfo();
 float GetCPULoad();
 float GetFanSPeed();
 float GetTemprature();
-void GetMemoryUsage(float &physUsedPercentage, float &swapUsedPercentage);
-void GetDiskUsage(float &diskUsedPercentage);
+void GetMemoryUsage(float &physUsedPercentage, float &swapUsedPercentage, 
+                    std::string &totalMemoryStr, std::string &usedMemoryStr, 
+                    std::string &totalSwapStr, std::string &usedSwapStr);
+void GetDiskUsage(float &diskUsedPercentage,std::string &usedStorageStr,std::string &totalStorageStr) ;
 
 // student TODO : memory and processes
 float GetCPUUsage(int pid);
 float GetMemUsage(int pid);
 std::vector<ProcessInfo> FetchProcessList();
 void RenderProcessMonitorUI();
-std::pair<std::pair<long, long>, std::pair<long, long>> getMemUsage();
-std::pair<long, long> getDiskUsage();
+std::pair<std::pair<std::pair<long, std::string>, std::pair<long, std::string>>,
+          std::pair<std::pair<long, std::string>, std::pair<long, std::string>>>
+getMemUsage();
+std::pair< std::pair<long, long>, std::pair<std::string, std::string> > getDiskUsage();
 
 // student TODO : network
 std::vector<NetworkInterface> getNetworkInfo();
