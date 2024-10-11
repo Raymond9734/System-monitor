@@ -57,6 +57,14 @@
     "cinttypes": "cpp",
     "typeinfo": "cpp",
     "variant": "cpp",
-    "text_encoding": "cpp"
+    "text_encoding": "cpp",
+    "chrono": "cpp",
+    "unordered_set": "cpp",
+    "iomanip": "cpp",
+    "sstream": "cpp",
+    "future": "cpp",
+    "condition_variable": "cpp",
+    "mutex": "cpp",
+    "set": "cpp"
   }
 }

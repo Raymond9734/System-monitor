@@ -35,67 +35,48 @@
 //for string stream operations.
 #include <sstream>
 
+#include <netdb.h>
+#include <chrono>
+#include <thread>
+#include <future>
+#include <string>
+
+#include <array>
+#include <memory>
+#include <cstdio>
+#include <iterator>
+#include <stdexcept>
 using namespace std;
 
-struct CPUStats
-{
-    long long int user;
-    long long int nice;
-    long long int system;
-    long long int idle;
-    long long int iowait;
-    long long int irq;
-    long long int softirq;
-    long long int steal;
-    long long int guest;
-    long long int guestNice;
+// Struct to hold the system CPU times
+struct CPUStats {
+    unsigned long long user, nice, system, idle, iowait, irq, softirq, steal;
 };
 
-// processes `stat`
-struct Proc
-{
+// Struct to hold the process CPU times
+struct ProcessStats {
+    unsigned long long utime, stime, cutime, cstime;
+};
+
+// Structure to hold process information
+struct ProcessInfo {
     int pid;
-    string name;
-    char state;
-    long long int vsize;
-    long long int rss;
-    long long int utime;
-    long long int stime;
+    std::string name;
+    std::string state;
+    float cpuUsage;
+    float memoryUsage;
 };
 
-struct IP4
-{
-    char *name;
-    char addressBuffer[INET_ADDRSTRLEN];
-};
 
-struct Networks
-{
-    vector<IP4> ip4s;
-};
-
-struct TX
-{
-    int bytes;
-    int packets;
-    int errs;
-    int drop;
-    int fifo;
-    int frame;
-    int compressed;
-    int multicast;
-};
-
-struct RX
-{
-    int bytes;
-    int packets;
-    int errs;
-    int drop;
-    int fifo;
-    int colls;
-    int carrier;
-    int compressed;
+struct NetworkInterface {
+    std::string name;
+    std::string ipv4;
+    struct {
+        long long bytes, packets, errs, drop, fifo, frame, compressed, multicast;
+    } rx;
+    struct {
+        long long bytes, packets, errs, drop, fifo, colls, carrier, compressed;
+    } tx;
 };
 
 // student TODO : system stats
@@ -108,14 +89,30 @@ std::string getCpuInfo();
 float GetCPULoad();
 float GetFanSPeed();
 float GetTemprature();
+void GetMemoryUsage(float &physUsedPercentage, float &swapUsedPercentage, 
+                    std::string &totalMemoryStr, std::string &usedMemoryStr, 
+                    std::string &totalSwapStr, std::string &usedSwapStr);
+void GetDiskUsage(float &diskUsedPercentage,std::string &usedStorageStr,std::string &totalStorageStr) ;
 
 // student TODO : memory and processes
+float GetCPUUsage(int pid);
+float GetMemUsage(int pid);
+std::vector<ProcessInfo> FetchProcessList();
+void RenderProcessMonitorUI();
+std::pair<std::pair<std::pair<long, std::string>, std::pair<long, std::string>>,
+          std::pair<std::pair<long, std::string>, std::pair<long, std::string>>>
+getMemUsage();
+std::pair< std::pair<long, long>, std::pair<std::string, std::string> > getDiskUsage();
 
 // student TODO : network
+std::vector<NetworkInterface> getNetworkInfo();
+std::string formatBytes(long long bytes);
 
 //Render  Functions
 void RenderSystemInfo();
 void RenderSystemMonitor();
 void RenderGraph(const char *label, float *data, int data_size, float y_scale, bool animate);
+void RenderMemoryProcessMonitor();
+void RenderNetworkInfo();
 
 #endif
