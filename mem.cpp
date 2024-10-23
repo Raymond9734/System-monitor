@@ -71,8 +71,11 @@ void GetDiskUsage(float &diskUsedPercentage,std::string &usedStorageStr,std::str
 
 // Function to fetch process information concurrently
 ProcessInfo FetchProcessInfo(int pid) {
+    
     ProcessInfo process;
+    
     process.pid = pid;
+
 
     // Fetch command line
     std::string cmdPath = "/proc/" + std::to_string(pid) + "/cmdline";
@@ -103,7 +106,7 @@ ProcessInfo FetchProcessInfo(int pid) {
         process.state = "Sleeping";
     } else if (state == "D") {
         process.state = "USleep";
-    } else if (state == "T") {
+    } else if (state == "t") {
         process.state = "Stopped";
     } else if (state == "Z") {
         process.state = "Zombie";
@@ -123,35 +126,30 @@ ProcessInfo FetchProcessInfo(int pid) {
 std::vector<ProcessInfo> FetchProcessList() {
     std::vector<ProcessInfo> processes;
     
-    DIR *dir = opendir("/proc");
+    DIR* dir = opendir("/proc");
     if (!dir) {
         std::cerr << "Failed to open /proc directory." << std::endl;
-        return processes; // Return an empty vector if failed
+        return processes;
     }
-    
-    struct dirent *entry;
-    std::vector<std::future<ProcessInfo>> futures; // To store futures for concurrent processing
+
+    struct dirent* entry;
+    std::vector<std::future<ProcessInfo>> futures;
 
     while ((entry = readdir(dir)) != nullptr) {
-        if (entry->d_type == DT_DIR && isdigit(entry->d_name[0])) {
-            int pid = std::stoi(entry->d_name);
-
-            // Launch the process information fetching in a separate thread
+        std::string dirName(entry->d_name);
+        if (entry->d_type == DT_DIR && isNumber(dirName)) {
+            int pid = std::stoi(dirName);
             futures.emplace_back(std::async(std::launch::async, FetchProcessInfo, pid));
         }
     }
 
-    // Collect results from futures
     for (auto& future : futures) {
         ProcessInfo process = future.get();
-        if (process.pid != 0) { // Ensure we have a valid process
+        if (!process.name.empty()) {
             processes.push_back(process);
         }
     }
 
-    if (closedir(dir) != 0) {
-        std::cerr << "Failed to close /proc directory." << std::endl;
-    }
-    
+    closedir(dir);
     return processes;
 }

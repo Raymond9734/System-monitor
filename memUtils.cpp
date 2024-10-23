@@ -1,6 +1,11 @@
 #include "header.h"
 extern int TOTAL_PROCESSES;
 
+// Helper function to check if a string contains only digits
+bool isNumber(const std::string& str) {
+    return !str.empty() && std::all_of(str.begin(), str.end(), ::isdigit);
+}
+
 // Utility function to split a string by spaces
 std::vector<std::string> split(const std::string &s) {
     std::istringstream iss(s);
@@ -151,12 +156,12 @@ float GetCPUUsage(int pid) {
     std::string pidStr = std::to_string(pid);
     std::string statPath = "/proc/" + pidStr + "/stat";
 
-    // Take two measurements with a delay
-    auto measure = [&]() -> std::pair<long, float> {
+    // Helper function to get total process CPU time and system CPU time
+    auto measure = [&]() -> std::pair<long, long> {
         std::ifstream statFile(statPath);
         if (!statFile.is_open()) {
             std::cerr << "Could not open file: " << statPath << std::endl;
-            return {-1, -1.0};
+            return {-1, -1};
         }
 
         std::string statLine;
@@ -169,37 +174,47 @@ float GetCPUUsage(int pid) {
             statFields.push_back(field);
         }
 
-        long utime = std::stol(statFields[13]);
-        long stime = std::stol(statFields[14]);
+        long utime = std::stol(statFields[13]);  // user mode time
+        long stime = std::stol(statFields[14]);  // system mode time
         long total_time = utime + stime;
 
-        float uptime;
-        std::ifstream uptimeFile("/proc/uptime");
-        if (uptimeFile.is_open()) {
-            uptimeFile >> uptime;
-        } else {
-            std::cerr << "Could not open /proc/uptime" << std::endl;
-            return {-1, -1.0};
+        // Read system-wide CPU time from /proc/stat
+        std::ifstream cpuFile("/proc/stat");
+        if (!cpuFile.is_open()) {
+            std::cerr << "Could not open /proc/stat" << std::endl;
+            return {-1, -1};
         }
 
-        return {total_time, uptime};
+        std::string cpuLine;
+        std::getline(cpuFile, cpuLine);
+        std::istringstream cpuStream(cpuLine);
+        std::string cpuLabel;
+        long user, nice, system, idle, iowait, irq, softirq, steal;
+        cpuStream >> cpuLabel >> user >> nice >> system >> idle >> iowait >> irq >> softirq >> steal;
+        long total_system_time = user + nice + system + idle + iowait + irq + softirq + steal;
+
+        return {total_time, total_system_time};
     };
 
-    auto [total_time1, uptime1] = measure();
-    if (total_time1 < 0) return -1.0;
+    auto [total_time1, system_time1] = measure();
+    if (total_time1 < 0 || system_time1 < 0) return -1.0;
 
-    std::this_thread::sleep_for(std::chrono::milliseconds(3000));  
+    std::this_thread::sleep_for(std::chrono::milliseconds(2600));  // 1-second interval
 
-    auto [total_time2, uptime2] = measure();
-    if (total_time2 < 0) return -1.0;
+    auto [total_time2, system_time2] = measure();
+    if (total_time2 < 0 || system_time2 < 0) return -1.0;
 
     long hertz = sysconf(_SC_CLK_TCK);
-    
+    long numCores = sysconf(_SC_NPROCESSORS_ONLN);  // Get the number of CPU cores
+
     float total_time_diff = static_cast<float>(total_time2 - total_time1) / hertz;
-    float uptime_diff = uptime2 - uptime1;
+    float system_time_diff = static_cast<float>(system_time2 - system_time1) / hertz;
 
-    // Calculate CPU usage percentage
-    float cpuUsage = 100.0 * (total_time_diff / uptime_diff);
+    // Calculate CPU usage percentage (total_time_diff is the process time, system_time_diff is overall CPU time)
+    float cpuUsage = 100.0 * (total_time_diff / (system_time_diff));
 
-    return cpuUsage;
+    // Multiply by the number of cores to match top's calculation
+    cpuUsage *= numCores;
+
+    return std::max(0.0f, cpuUsage);;
 }

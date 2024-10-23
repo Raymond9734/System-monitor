@@ -24,8 +24,10 @@
 #include <sys/types.h>
 #include <sys/sysinfo.h>
 #include <sys/statvfs.h>
+#include <algorithm> 
 // for time and date
 #include <ctime>
+#include <cctype> // For isdigit
 // ifconfig ip addresses
 #include <sys/types.h>
 #include <ifaddrs.h>
@@ -46,6 +48,8 @@
 #include <cstdio>
 #include <iterator>
 #include <stdexcept>
+#include <unordered_map>
+class CPUUsageCalculator;
 using namespace std;
 
 // Struct to hold the system CPU times
@@ -103,7 +107,8 @@ std::pair<std::pair<std::pair<long, std::string>, std::pair<long, std::string>>,
           std::pair<std::pair<long, std::string>, std::pair<long, std::string>>>
 getMemUsage();
 std::pair< std::pair<long, long>, std::pair<std::string, std::string> > getDiskUsage();
-
+bool isNumber(const std::string &str);
+std::vector<int> GetAllPIDs();
 // student TODO : network
 std::vector<NetworkInterface> getNetworkInfo();
 std::string formatBytes(long long bytes);
