@@ -165,13 +165,22 @@ float GetCPUUsage(int pid) {
         }
 
         std::string statLine;
-        std::getline(statFile, statLine);
+        if (!std::getline(statFile, statLine)) {
+            std::cerr << "Failed to read from file: " << statPath << std::endl;
+            return {-1, -1};
+        }
+
         std::istringstream iss(statLine);
         std::vector<std::string> statFields;
         std::string field;
 
         while (iss >> field) {
             statFields.push_back(field);
+        }
+
+        if (statFields.size() < 15) {
+            std::cerr << "Insufficient data in stat file for PID: " << pid << std::endl;
+            return {-1, -1};
         }
 
         long utime = std::stol(statFields[13]);  // user mode time
@@ -186,11 +195,18 @@ float GetCPUUsage(int pid) {
         }
 
         std::string cpuLine;
-        std::getline(cpuFile, cpuLine);
+        if (!std::getline(cpuFile, cpuLine)) {
+            std::cerr << "Failed to read from /proc/stat" << std::endl;
+            return {-1, -1};
+        }
+
         std::istringstream cpuStream(cpuLine);
         std::string cpuLabel;
         long user, nice, system, idle, iowait, irq, softirq, steal;
-        cpuStream >> cpuLabel >> user >> nice >> system >> idle >> iowait >> irq >> softirq >> steal;
+        if (!(cpuStream >> cpuLabel >> user >> nice >> system >> idle >> iowait >> irq >> softirq >> steal)) {
+            std::cerr << "Failed to parse CPU data from /proc/stat" << std::endl;
+            return {-1, -1};
+        }
         long total_system_time = user + nice + system + idle + iowait + irq + softirq + steal;
 
         return {total_time, total_system_time};
@@ -199,22 +215,40 @@ float GetCPUUsage(int pid) {
     auto [total_time1, system_time1] = measure();
     if (total_time1 < 0 || system_time1 < 0) return -1.0;
 
-    std::this_thread::sleep_for(std::chrono::milliseconds(2600));  // 1-second interval
+    std::this_thread::sleep_for(std::chrono::milliseconds(3000));  // 3-second interval
 
     auto [total_time2, system_time2] = measure();
     if (total_time2 < 0 || system_time2 < 0) return -1.0;
 
     long hertz = sysconf(_SC_CLK_TCK);
-    long numCores = sysconf(_SC_NPROCESSORS_ONLN);  // Get the number of CPU cores
+    if (hertz <= 0) {
+        std::cerr << "Invalid clock ticks per second" << std::endl;
+        return -1.0;
+    }
+
+    long numCores = sysconf(_SC_NPROCESSORS_ONLN);
+    if (numCores <= 0) {
+        std::cerr << "Invalid number of CPU cores" << std::endl;
+        return -1.0;
+    }
 
     float total_time_diff = static_cast<float>(total_time2 - total_time1) / hertz;
     float system_time_diff = static_cast<float>(system_time2 - system_time1) / hertz;
 
+    if (system_time_diff <= 0) {
+        std::cerr << "Invalid system time difference" << std::endl;
+        return -1.0;
+    }
+
     // Calculate CPU usage percentage (total_time_diff is the process time, system_time_diff is overall CPU time)
-    float cpuUsage = 100.0 * (total_time_diff / (system_time_diff));
+    float cpuUsage = 100.0 * (total_time_diff / system_time_diff);
 
     // Multiply by the number of cores to match top's calculation
     cpuUsage *= numCores;
 
-    return std::max(0.0f, cpuUsage);;
+    // if (pid == 476126) {
+    //     std::cout << "Pid: " << pid << " cpu usage: " << cpuUsage << std::endl;
+    // }
+
+    return cpuUsage;
 }

@@ -3,127 +3,165 @@
 #include <unordered_set>
 
 static std::vector<ProcessInfo> processList; // Cache process list
-
+std::atomic<bool> g_isFetchingProcesses(false);
+std::atomic<int> g_totalProcesses(0);
+std::vector<ProcessInfo> displayProcessList;
+std::vector<ProcessInfo> updateProcessList;
+std::mutex processListMutex;
+std::atomic<bool> isUpdating(false);
 void RenderSystemInfo() {
+    ImGuiIO& io = ImGui::GetIO();
+    if (io.Fonts->Fonts.Size > 0) {
+        ImGui::PushFont(io.Fonts->Fonts[1]); // Safely use font index 1 if available
+    }
 
+    ImGui::PushStyleColor(ImGuiCol_Text, IM_COL32(0, 255, 255, 255)); // Cyan text color
+    ImGui::Text("System Information");
+    ImGui::PopStyleColor();
+    ImGui::Separator();
 
+    ImGui::Spacing();
     ImGui::Text("OS: %s", getOsName());
-
-    ImGui::Text("Logged-in-User: %s",getLoggedInUser().c_str());
-
+    ImGui::Spacing();
+    ImGui::Text("Logged-in User: %s", getLoggedInUser().c_str());
+    ImGui::Spacing();
     ImGui::Text("Hostname: %s", getHostName().c_str());
-
+    ImGui::Spacing();
     ImGui::Text("CPU: %s", CPUinfo().c_str());
+    ImGui::Spacing();
 
-    ImGui::Text("Total Processes: %d", processList.size());
+    {
+        std::lock_guard<std::mutex> lock(processListMutex);
+        ImGui::Text("Total Processes: %zu", g_totalProcesses.load());
+    }
 
+    if (io.Fonts->Fonts.Size > 0) {
+        ImGui::PopFont();
+    }
 }
+
 void RenderGraph(const char* label, float* data, int data_size, float y_scale, bool animate) {
-    ImGui::Text(label);
+    ImGui::PushStyleColor(ImGuiCol_Text, IM_COL32(0, 255, 255, 255)); // Cyan text color
+    ImGui::Text("%s", label);
+    ImGui::PopStyleColor();
     
-    // Create a graph (you can use ImGui::PlotLines or any custom plotting function)
-    ImGui::PlotLines("Graph", data, data_size, 0, NULL, 0.0f, y_scale, ImVec2(0, 80));
+    ImGui::PushStyleColor(ImGuiCol_PlotLines, IM_COL32(0, 255, 255, 255)); // Cyan line color
+    ImGui::PushStyleColor(ImGuiCol_FrameBg, IM_COL32(30, 30, 30, 255)); // Dark background
+    ImGui::PlotLines("##Graph", data, data_size, 0, NULL, 0.0f, y_scale, ImVec2(ImGui::GetContentRegionAvail().x, 120)); // Increased height to 120
+    ImGui::PopStyleColor(2);
 }
+
 void RenderSystemMonitor() {
     static bool animateCPU = true, animateFan = true, animateThermal = true;
     static float yScale = 50.0f;
     static float fpsCPU = 30.0f, fpsFan = 30.0f, fpsThermal = 30.0f;
     static float cpuRefreshInterval = 1.0f;  // CPU load refresh interval in seconds
 
-    ImGui::BeginTabBar("System Info");
+    ImGui::PushFont(ImGui::GetIO().Fonts->Fonts[1]); // Assuming font index 1 is a larger, clearer font
 
-    // CPU Tab
-    if (ImGui::BeginTabItem("CPU")) {
-        static float cpuData[100]; // Buffer for CPU data
-        static int cpuDataSize = 0;
-        static float cpuLoad = 0.0f;  // Hold current CPU load
+    if (ImGui::BeginTabBar("System Info", ImGuiTabBarFlags_FittingPolicyScroll)) {
+        // CPU Tab
+        if (ImGui::BeginTabItem("CPU")) {
+            static float cpuData[100] = {0}; // Buffer for CPU data
+            static int cpuDataSize = 0;
+            static float cpuLoad = 0.0f;  // Hold current CPU load
 
-        static float frameCountCPU = 0.0f;  // Timer for animation
-        static float cpuLoadRefreshTimer = 0.0f;  // Timer for CPU refresh
+            static float frameCountCPU = 0.0f;  // Timer for animation
+            static float cpuLoadRefreshTimer = 0.0f;  // Timer for CPU refresh
 
-        // Increment timers with delta time
-        frameCountCPU += ImGui::GetIO().DeltaTime;
-        cpuLoadRefreshTimer += ImGui::GetIO().DeltaTime;
+            frameCountCPU += ImGui::GetIO().DeltaTime;
+            cpuLoadRefreshTimer += ImGui::GetIO().DeltaTime;
 
-        // Refresh CPU load after specified interval
-        if (cpuLoadRefreshTimer >= cpuRefreshInterval) {
-            cpuLoad = GetCPULoad();  // Fetch new CPU load
-            cpuLoadRefreshTimer = 0.0f;  // Reset the timer
+            if (cpuLoadRefreshTimer >= cpuRefreshInterval) {
+                cpuLoad = GetCPULoad();  // Fetch new CPU load
+                cpuLoadRefreshTimer = 0.0f;  // Reset the timer
+            }
+
+            if (frameCountCPU >= 4.0f / fpsCPU && animateCPU) {
+                cpuData[cpuDataSize++ % 100] = cpuLoad;
+                frameCountCPU = 0.0f;  // Reset frame count
+            }
+
+            ImGui::Spacing();
+            RenderGraph("CPU Load", cpuData, cpuDataSize, yScale, animateCPU);
+
+            ImGui::Spacing();
+            ImGui::Text("Current CPU Load: %.1f%%", cpuLoad);
+            ImGui::Checkbox("Animate CPU", &animateCPU);
+            ImGui::SliderFloat("CPU FPS", &fpsCPU, 1.0f, 60.0f);
+
+            ImGui::EndTabItem();
         }
 
-        // Store CPU load data in a circular buffer if animating
-        if (frameCountCPU >= 4.0f / fpsCPU && animateCPU) {
-            cpuData[cpuDataSize++ % 100] = cpuLoad;
-            frameCountCPU = 0.0f;  // Reset frame count
+        // Fan Tab
+        if (ImGui::BeginTabItem("Fan")) {
+            static float fanData[100] = {0}; // Buffer for Fan data
+            static int fanDataSize = 0;
+
+            float fanSpeed = GetFanSPeed();
+
+            static float frameCountFan = 0.0f;
+            frameCountFan += ImGui::GetIO().DeltaTime;
+            if (frameCountFan >= 1.0f / fpsFan && animateFan) {
+                fanData[fanDataSize++ % 100] = fanSpeed;
+                frameCountFan = 0.0f;
+            }
+
+            ImGui::Spacing();
+            RenderGraph("Fan Speed", fanData, fanDataSize, yScale, animateFan);
+
+            ImGui::Spacing();
+            ImGui::Text("Fan Status: Active");
+            ImGui::Text("Current Fan Speed: %.1f RPM", fanSpeed);
+            ImGui::Checkbox("Animate Fan", &animateFan);
+            ImGui::SliderFloat("Fan FPS", &fpsFan, 1.0f, 60.0f);
+
+            ImGui::EndTabItem();
         }
 
-        // Dummy space before the graph
-        ImGui::Dummy(ImVec2(0.0f, 20.0f));
+        // Thermal Tab
+        if (ImGui::BeginTabItem("Thermal")) {
+            static float thermalData[100] = {0}; // Buffer for Thermal data
+            static int thermalDataSize = 0;
 
-        // Render CPU graph
-        RenderGraph("CPU Load", cpuData, cpuDataSize, yScale, animateCPU);
+            float temperature = GetTemprature();
 
-        // Display current CPU load and controls
-        ImGui::Text("Current CPU Load: %.1f%%", cpuLoad);
-        ImGui::Checkbox("Animate CPU", &animateCPU);
-        ImGui::SliderFloat("CPU FPS", &fpsCPU, 1.0f, 60.0f);
+            static float frameCountThermal = 0.0f;
+            frameCountThermal += ImGui::GetIO().DeltaTime;
+            if (frameCountThermal >= 1.0f / fpsThermal && animateThermal) {
+                thermalData[thermalDataSize++ % 100] = temperature;
+                frameCountThermal = 0.0f;
+            }
 
-        ImGui::EndTabItem();
+            ImGui::Spacing();
+            RenderGraph("Temperature", thermalData, thermalDataSize, yScale, animateThermal);
+
+            ImGui::Spacing();
+            ImGui::Text("Current Temperature: %.1f °C", temperature);
+            ImGui::Checkbox("Animate Thermal", &animateThermal);
+            ImGui::SliderFloat("Thermal FPS", &fpsThermal, 1.0f, 60.0f);
+
+            ImGui::EndTabItem();
+        }
+
+        ImGui::EndTabBar();
     }
 
-    // Fan Tab
-    if (ImGui::BeginTabItem("Fan")) {
-        static float fanData[100]; // Buffer for Fan data
-        static int fanDataSize = 0;
+    ImGui::Spacing();
+    ImGui::Separator();
+    ImGui::Spacing();
 
-        float fanSpeed = GetFanSPeed();
-
-        static float frameCountFan = 0.0f;
-        frameCountFan += ImGui::GetIO().DeltaTime;
-        if (frameCountFan >= 1.0f / fpsFan && animateFan) {
-            fanData[fanDataSize++ % 100] = fanSpeed;
-            frameCountFan = 0.0f;
-        }
-
-        RenderGraph("Fan Speed", fanData, fanDataSize, yScale, animateFan);
-        ImGui::Text("Fan Status: Active");
-        ImGui::Text("Current Fan Speed: %.1f RPM", fanSpeed);
-        ImGui::Checkbox("Animate Fan", &animateFan);
-        ImGui::SliderFloat("Fan FPS", &fpsFan, 1.0f, 60.0f);
-
-        ImGui::EndTabItem();
-    }
-
-    // Thermal Tab
-    if (ImGui::BeginTabItem("Thermal")) {
-        static float thermalData[100]; // Buffer for Thermal data
-        static int thermalDataSize = 0;
-
-        float temperature = GetTemprature();
-
-        static float frameCountThermal = 0.0f;
-        frameCountThermal += ImGui::GetIO().DeltaTime;
-        if (frameCountThermal >= 1.0f / fpsThermal && animateThermal) {
-            thermalData[thermalDataSize++ % 100] = temperature;
-            frameCountThermal = 0.0f;
-        }
-
-        RenderGraph("Temperature", thermalData, thermalDataSize, yScale, animateThermal);
-        ImGui::Text("Current Temperature: %.1f °C", temperature);
-        ImGui::Checkbox("Animate Thermal", &animateThermal);
-        ImGui::SliderFloat("Thermal FPS", &fpsThermal, 1.0f, 60.0f);
-
-        ImGui::EndTabItem();
-    }
-
-    ImGui::EndTabBar();
-
-    // Global controls for Y scale
+    ImGui::PushStyleColor(ImGuiCol_Text, IM_COL32(0, 255, 255, 255)); // Cyan text color
+    ImGui::Text("Graph Scale");
+    ImGui::PopStyleColor();
     ImGui::SliderFloat("Y Scale", &yScale, 0.0f, 200.0f);
+
+    ImGui::PopFont();
 }
 
 // Function to render the memory and process monitor
 void RenderMemoryProcessMonitor() {
+    ImGui::PushFont(ImGui::GetIO().Fonts->Fonts[1]); // Use the Poppins font
 
     // Variables to store memory and disk usage percentages
     float physMemUsage = 0.0f;
@@ -138,243 +176,303 @@ void RenderMemoryProcessMonitor() {
 
     // Get current system metrics
     GetMemoryUsage(physMemUsage, swapMemUsage, totalMemoryStr, usedMemoryStr, totalSwapStr, usedSwapStr);
-    GetDiskUsage(diskUsage,usedStorageStr,totalStorageStr);
+    GetDiskUsage(diskUsage, usedStorageStr, totalStorageStr);
+
+    // Create a child window for Memory Monitor
+    ImGui::BeginChild("MemoryMonitor", ImVec2(ImGui::GetWindowWidth(), ImGui::GetWindowHeight() * 0.4f), true, ImGuiWindowFlags_AlwaysUseWindowPadding);
+
+    // Modern, futuristic header
+    ImGui::PushStyleColor(ImGuiCol_Text, IM_COL32(0, 255, 255, 255)); // Cyan text
+    ImGui::Text("Memory and Storage");
+    ImGui::PopStyleColor();
+
+    ImGui::Spacing();
 
     // Display memory information with human-readable strings
-    ImGui::Text("Physical Memory (RAM):");
-    ImGui::Text("Total: %s, Used: %s", totalMemoryStr.c_str(), usedMemoryStr.c_str());
+    ImGui::Text("Physical Memory (RAM)");
+    ImGui::SameLine(ImGui::GetWindowWidth() - 200);
+    ImGui::Text("%s / %s", usedMemoryStr.c_str(), totalMemoryStr.c_str());
 
     // Display RAM usage with a progress bar
     char physMemLabel[32];
-    sprintf(physMemLabel, "%.0f%%", physMemUsage);  // Format the percentage label
-    ImGui::ProgressBar(physMemUsage / 100.0f, ImVec2(0.0f, 30.0f), physMemLabel);
+    sprintf(physMemLabel, "%.1f%%", physMemUsage);
+    ImGui::PushStyleColor(ImGuiCol_PlotHistogram, IM_COL32(0, 255, 255, 255)); // Cyan progress bar
+    ImGui::ProgressBar(physMemUsage / 100.0f, ImVec2(-1.0f, 0.0f), physMemLabel);
+    ImGui::PopStyleColor();
+
+    ImGui::Spacing();
 
     // Display swap information with human-readable strings
-    ImGui::Text("Virtual Memory (SWAP):");
-    ImGui::Text("Total: %s, Used: %s", totalSwapStr.c_str(), usedSwapStr.c_str());
+    ImGui::Text("Virtual Memory (SWAP)");
+    ImGui::SameLine(ImGui::GetWindowWidth() - 200);
+    ImGui::Text("%s / %s", usedSwapStr.c_str(), totalSwapStr.c_str());
 
     // Display swap usage with a progress bar
     char swapMemLabel[32];
-    sprintf(swapMemLabel, "%.0f%%", swapMemUsage);  // Format the percentage label
-    ImGui::ProgressBar(swapMemUsage / 100.0f, ImVec2(0.0f, 30.0f), swapMemLabel);
+    sprintf(swapMemLabel, "%.1f%%", swapMemUsage);
+    ImGui::PushStyleColor(ImGuiCol_PlotHistogram, IM_COL32(0, 255, 255, 255)); // Cyan progress bar
+    ImGui::ProgressBar(swapMemUsage / 100.0f, ImVec2(-1.0f, 0.0f), swapMemLabel);
+    ImGui::PopStyleColor();
+
+    ImGui::Spacing();
 
     // Display disk usage with a progress bar
-    ImGui::Text("Disk Usage:");
-    ImGui::Text("Total: %s, Used: %s", totalStorageStr.c_str(), usedStorageStr.c_str());
+    ImGui::Text("Disk Usage");
+    ImGui::SameLine(ImGui::GetWindowWidth() - 200);
+    ImGui::Text("%s / %s", usedStorageStr.c_str(), totalStorageStr.c_str());
+
     char diskUsageLabel[32];
-    sprintf(diskUsageLabel, "%.0f%%", diskUsage);  // Format the percentage label
-    ImGui::ProgressBar(diskUsage / 100.0f, ImVec2(0.0f, 30.0f), diskUsageLabel);
+    sprintf(diskUsageLabel, "%.1f%%", diskUsage);
+    ImGui::PushStyleColor(ImGuiCol_PlotHistogram, IM_COL32(0, 255, 255, 255)); // Cyan progress bar
+    ImGui::ProgressBar(diskUsage / 100.0f, ImVec2(-1.0f, 0.0f), diskUsageLabel);
+    ImGui::PopStyleColor();
+
+    ImGui::EndChild();
+
+    ImGui::PopFont();
 }
 
+// Function to render the process monitor UI
 void RenderProcessMonitorUI() {
-    static char filterText[64] = ""; // Filter text buffer
-    static std::unordered_set<int> selectedPIDs; // To track selected processes by PID
-    static int totalProcesses = 0; // To track total number of processes
-  
-    static std::future<void> futureTask;
+    ImGui::PushFont(ImGui::GetIO().Fonts->Fonts[1]); // Use the Poppins font
 
-    // Refresh process list asynchronously if more than 1 second has passed
-    if (!futureTask.valid() || futureTask.wait_for(std::chrono::seconds(0)) == std::future_status::ready) {
-        futureTask = std::async(std::launch::async, [&]()
-        {
-            processList = FetchProcessList(); 
-            totalProcesses = processList.size(); 
-        });
+    static char filterText[64] = "";
+    static std::unordered_set<int> selectedPIDs;
+    static std::chrono::steady_clock::time_point lastFetchTime = std::chrono::steady_clock::now();
+    static bool isFetching = false;
+    static std::vector<ProcessInfo> displayProcessList;
+
+    auto currentTime = std::chrono::steady_clock::now();
+    auto elapsedTime = std::chrono::duration_cast<std::chrono::seconds>(currentTime - lastFetchTime).count();
+
+    if (!isFetching && elapsedTime >= 0) {
+        isFetching = true;
+        lastFetchTime = currentTime;
+        g_isFetchingProcesses.store(true);
+        std::thread([]() {
+            g_totalProcesses.store(0);
+            StartFetchingProcesses();
+            g_isFetchingProcesses.store(false);
+        }).detach();
     }
 
-    // Tab bar
-    if (ImGui::BeginTabBar("##Tabs")) {
-        if (ImGui::BeginTabItem("Processes")) {
-
-            ImGui::Text("Total Number of Processes: %d", totalProcesses); 
-            // Filter text box
-            ImGui::InputText("Filter", filterText, IM_ARRAYSIZE(filterText));
-
-            // Handle empty case gracefully
-            if (processList.empty()) {
-                ImGui::Text("No processes found.");
-                ImGui::EndTabItem();
-                ImGui::EndTabBar();
-                return;
-            }
-
-            // Table displaying processes
-            if (ImGui::BeginTable("ProcessTable", 5, ImGuiTableFlags_RowBg | ImGuiTableFlags_Borders | ImGuiTableFlags_Resizable)) {
-                // Table headers
-                ImGui::TableSetupColumn("PID");
-                ImGui::TableSetupColumn("Name");
-                ImGui::TableSetupColumn("State");
-                ImGui::TableSetupColumn("CPU Usage (%)");
-                ImGui::TableSetupColumn("Memory Usage (%)");
-                ImGui::TableHeadersRow();
-
-                // Loop over process list and display filtered results
-                for (const auto& process : processList) {
-                    if (process.name.empty() || process.state.empty()) {
-                        continue; // Skip if any required fields are empty
-                    }
-                    // Filter based on user input
-                    if (strlen(filterText) > 0 && process.name.find(filterText) == std::string::npos) {
-                        continue; // Skip this process if it doesn't match the filter
-                    }
-
-                    ImGui::TableNextRow();
-                    ImGui::PushID(process.pid);
-
-                    bool isSelected = selectedPIDs.find(process.pid) != selectedPIDs.end();
-
-                    // Set the background color for selected rows
-                    if (isSelected) {
-                        ImGui::TableSetBgColor(ImGuiTableBgTarget_RowBg1, IM_COL32(0, 128, 0, 255)); // Highlight color
-                    }
-
-                    // Make the entire row selectable
-                    if (ImGui::TableSetColumnIndex(0)) { // Start from the first column
-                        if (ImGui::Selectable("##WholeRowSelectable", isSelected, ImGuiSelectableFlags_SpanAllColumns | ImGuiSelectableFlags_AllowItemOverlap)) {
-                            if (isSelected) {
-                                selectedPIDs.erase(process.pid);
-                            } else {
-                                selectedPIDs.insert(process.pid);
-                            }
-                        }
-                    }
-
-                    // Display process information in table columns
-                    ImGui::TableSetColumnIndex(0);
-                    ImGui::Text("%d", process.pid);  // PID
-                    ImGui::TableSetColumnIndex(1);
-                    ImGui::Text("%s", process.name.c_str());  // Name
-                    ImGui::TableSetColumnIndex(2);
-                    ImGui::Text("%s", process.state.c_str());  // State
-                    ImGui::TableSetColumnIndex(3);
-                    ImGui::Text("%.2f", process.cpuUsage);  // CPU usage
-                    ImGui::TableSetColumnIndex(4);
-                    ImGui::Text("%.2f", process.memoryUsage);  // Memory usage
-
-                    ImGui::PopID();
-                }
-
-                ImGui::EndTable();
-            }
-
-            ImGui::EndTabItem();
+    std::vector<ProcessInfo> newProcesses;
+    ProcessInfo newProcess;
+    bool updatedList = false;
+    while (g_completedProcesses.try_pop(newProcess)) {
+        if (newProcess.cpuUsage > -1) {
+            newProcesses.push_back(std::move(newProcess));
         }
-        ImGui::EndTabBar();
     }
+
+    {
+        std::lock_guard<std::mutex> lock(processListMutex);
+        for (const auto& process : newProcesses) {
+            auto it = std::find_if(displayProcessList.begin(), displayProcessList.end(),
+                                   [&](const ProcessInfo& p) { return p.pid == process.pid; });
+            if (it != displayProcessList.end()) {
+                *it = process;
+                updatedList = true;
+            } else {
+                displayProcessList.push_back(process);
+            }
+        }
+        g_totalProcesses.store(displayProcessList.size());
+    }
+    
+    displayProcessList.erase(
+        std::remove_if(displayProcessList.begin(), displayProcessList.end(),
+                       [](const ProcessInfo& p) { return p.cpuUsage <= -1 || !p.isActive; }),
+        displayProcessList.end()
+    );
+
+    if (updatedList) {
+        std::sort(displayProcessList.begin(), displayProcessList.end(), 
+                  [](const ProcessInfo& a, const ProcessInfo& b) { return a.pid < b.pid; });
+    }
+
+    if (!g_isFetchingProcesses.load()) {
+        isFetching = false;
+    }
+
+    ImGui::Text("Total Number of Processes: %zu", displayProcessList.size());
+    ImGui::InputTextWithHint("##Filter", "Filter processes...", filterText, IM_ARRAYSIZE(filterText));
+
+    if (displayProcessList.empty()) {
+        ImGui::Text("No processes found.");
+        ImGui::PopFont();
+        return;
+    }
+
+    ImGui::PushStyleVar(ImGuiStyleVar_CellPadding, ImVec2(10, 5));
+    if (ImGui::BeginTable("ProcessTable", 5, ImGuiTableFlags_RowBg | ImGuiTableFlags_Borders | ImGuiTableFlags_Resizable | ImGuiTableFlags_Sortable)) {
+        ImGui::TableSetupColumn("PID", ImGuiTableColumnFlags_DefaultSort);
+        ImGui::TableSetupColumn("Name");
+        ImGui::TableSetupColumn("State");
+        ImGui::TableSetupColumn("CPU Usage (%)", ImGuiTableColumnFlags_PreferSortDescending);
+        ImGui::TableSetupColumn("Memory Usage (%)", ImGuiTableColumnFlags_PreferSortDescending);
+        ImGui::TableHeadersRow();
+
+        for (const auto& process : displayProcessList) {
+            if (process.name.empty() || process.state.empty() || process.cpuUsage <= -1) {
+                continue;
+            }
+            if (strlen(filterText) > 0 && process.name.find(filterText) == std::string::npos) {
+                continue;
+            }
+
+            ImGui::TableNextRow();
+            ImGui::PushID(process.pid);
+
+            bool isSelected = selectedPIDs.find(process.pid) != selectedPIDs.end();
+
+            if (isSelected) {
+                ImGui::TableSetBgColor(ImGuiTableBgTarget_RowBg1, IM_COL32(0, 128, 0, 100));
+            }
+
+            ImGui::TableSetColumnIndex(0);
+            if (ImGui::Selectable(std::to_string(process.pid).c_str(), isSelected, ImGuiSelectableFlags_SpanAllColumns | ImGuiSelectableFlags_AllowItemOverlap)) {
+                if (isSelected) {
+                    selectedPIDs.erase(process.pid);
+                } else {
+                    selectedPIDs.insert(process.pid);
+                }
+            }
+
+            ImGui::TableSetColumnIndex(1);
+            ImGui::TextUnformatted(process.name.c_str());
+            ImGui::TableSetColumnIndex(2);
+            ImGui::TextUnformatted(process.state.c_str());
+            ImGui::TableSetColumnIndex(3);
+            ImGui::Text("%.2f", process.cpuUsage);
+            ImGui::TableSetColumnIndex(4);
+            ImGui::Text("%.2f", process.memoryUsage);
+
+            ImGui::PopID();
+        }
+
+        ImGui::EndTable();
+    }
+    ImGui::PopStyleVar();
+
+    ImGui::PopFont();
 }
-// Function to render network statistics with progress bars
 void RenderNetworkInfo() {
+    ImGui::PushFont(ImGui::GetIO().Fonts->Fonts[1]); // Use the Poppins font
+
     auto interfaces = getNetworkInfo();
-    // Display network interfaces and their IPv4 addresses
-    ImGui::Text("Network Interfaces:");
+
+    // Modern, futuristic header
+    ImGui::PushStyleColor(ImGuiCol_Text, IM_COL32(0, 255, 255, 255)); // Cyan text
+    ImGui::Text("Network Interfaces");
+    ImGui::PopStyleColor();
     ImGui::Separator();
 
+    // Stylish interface display
     for (const auto& iface : interfaces) {
+        ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, 5.0f);
+        ImGui::PushStyleColor(ImGuiCol_FrameBg, IM_COL32(30, 30, 30, 255));
+        ImGui::PushStyleColor(ImGuiCol_Text, IM_COL32(200, 200, 200, 255));
+
+        ImGui::BeginChild(iface.name.c_str(), ImVec2(0, 60), true);
         ImGui::Text("%s: %s", iface.name.c_str(), iface.ipv4.c_str());
-        float usage = static_cast<float>(iface.rx.bytes + iface.tx.bytes) / (30.0f * 1024 * 1024 * 1024); // 30GB max
+        
+        float usage = static_cast<float>(iface.rx.bytes + iface.tx.bytes) / (30.0f * 1024 * 1024 * 1024);
         std::string label = formatBytes(iface.rx.bytes + iface.tx.bytes);
+        
+        ImGui::PushStyleColor(ImGuiCol_PlotHistogram, IM_COL32(0, 255, 255, 255));
         ImGui::ProgressBar(usage, ImVec2(-1, 0), label.c_str());
+        ImGui::PopStyleColor();
+
+        ImGui::EndChild();
+
+        ImGui::PopStyleColor(2);
+        ImGui::PopStyleVar();
         ImGui::Spacing();
     }
 
     ImGui::Separator();
     ImGui::Spacing();
 
-    // Tab bar for RX and TX
+    // Futuristic tab bar
+    ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, 3.0f);
+    ImGui::PushStyleColor(ImGuiCol_Tab, IM_COL32(40, 40, 40, 255));
+    ImGui::PushStyleColor(ImGuiCol_TabHovered, IM_COL32(60, 60, 60, 255));
+    ImGui::PushStyleColor(ImGuiCol_TabActive, IM_COL32(0, 255, 255, 100));
+
     if (ImGui::BeginTabBar("NetworkTabs")) {
         if (ImGui::BeginTabItem("RX")) {
-            ImGui::BeginTable("RXTable", 9, ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg);
-            ImGui::TableSetupColumn("Interface");
-            ImGui::TableSetupColumn("Bytes");
-            ImGui::TableSetupColumn("Packets");
-            ImGui::TableSetupColumn("Errs");
-            ImGui::TableSetupColumn("Drop");
-            ImGui::TableSetupColumn("Fifo");
-            ImGui::TableSetupColumn("Frame");
-            ImGui::TableSetupColumn("Compressed");
-            ImGui::TableSetupColumn("Multicast");
-            ImGui::TableHeadersRow();
-
-            for (const auto& iface : interfaces) {
-                ImGui::TableNextRow();
-                ImGui::TableNextColumn();
-                ImGui::Text("%s", iface.name.c_str());
-                ImGui::TableNextColumn();
-                ImGui::Text("%lld", iface.rx.bytes);
-                ImGui::TableNextColumn();
-                ImGui::Text("%lld", iface.rx.packets);
-                ImGui::TableNextColumn();
-                ImGui::Text("%lld", iface.rx.errs);
-                ImGui::TableNextColumn();
-                ImGui::Text("%lld", iface.rx.drop);
-                ImGui::TableNextColumn();
-                ImGui::Text("%lld", iface.rx.fifo);
-                ImGui::TableNextColumn();
-                ImGui::Text("%lld", iface.rx.frame);
-                ImGui::TableNextColumn();
-                ImGui::Text("%lld", iface.rx.compressed);
-                ImGui::TableNextColumn();
-                ImGui::Text("%lld", iface.rx.multicast);
-            }
-            ImGui::EndTable();
-
-            ImGui::Text("RX Usage");
-            for (const auto& iface : interfaces) {
-                float usage = static_cast<float>(iface.rx.bytes) / (30.0f * 1024 * 1024 * 1024); // 30GB max
-                std::string label = formatBytes(iface.rx.bytes);
-                ImGui::Text("%s", iface.name.c_str());
-                ImGui::ProgressBar(usage, ImVec2(-1, 0), label.c_str());
-            }
-
+            RenderNetworkTable("RX", interfaces, true);
             ImGui::EndTabItem();
         }
-
         if (ImGui::BeginTabItem("TX")) {
-            ImGui::BeginTable("TXTable", 9, ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg);
-            ImGui::TableSetupColumn("Interface");
-            ImGui::TableSetupColumn("Bytes");
-            ImGui::TableSetupColumn("Packets");
-            ImGui::TableSetupColumn("Errs");
-            ImGui::TableSetupColumn("Drop");
-            ImGui::TableSetupColumn("Fifo");
-            ImGui::TableSetupColumn("Colls");
-            ImGui::TableSetupColumn("Carrier");
-            ImGui::TableSetupColumn("Compressed");
-            ImGui::TableHeadersRow();
-
-            for (const auto& iface : interfaces) {
-                ImGui::TableNextRow();
-                ImGui::TableNextColumn();
-                ImGui::Text("%s", iface.name.c_str());
-                ImGui::TableNextColumn();
-                ImGui::Text("%lld", iface.tx.bytes);
-                ImGui::TableNextColumn();
-                ImGui::Text("%lld", iface.tx.packets);
-                ImGui::TableNextColumn();
-                ImGui::Text("%lld", iface.tx.errs);
-                ImGui::TableNextColumn();
-                ImGui::Text("%lld", iface.tx.drop);
-                ImGui::TableNextColumn();
-                ImGui::Text("%lld", iface.tx.fifo);
-                ImGui::TableNextColumn();
-                ImGui::Text("%lld", iface.tx.colls);
-                ImGui::TableNextColumn();
-                ImGui::Text("%lld", iface.tx.carrier);
-                ImGui::TableNextColumn();
-                ImGui::Text("%lld", iface.tx.compressed);
-            }
-            ImGui::EndTable();
-
-            ImGui::Text("TX Usage");
-            for (const auto& iface : interfaces) {
-                float usage = static_cast<float>(iface.tx.bytes) / (30.0f * 1024 * 1024 * 1024); // 5GB max
-                std::string label = formatBytes(iface.tx.bytes);
-                ImGui::Text("%s", iface.name.c_str());
-                ImGui::ProgressBar(usage, ImVec2(-1, 0), label.c_str());
-            }
-
+            RenderNetworkTable("TX", interfaces, false);
             ImGui::EndTabItem();
         }
         ImGui::EndTabBar();
+    }
+
+    ImGui::PopStyleColor(3);
+    ImGui::PopStyleVar();
+    ImGui::PopFont();
+}
+
+void RenderNetworkTable(const char* label, const std::vector<NetworkInterface>& interfaces, bool isRX) {
+    ImGui::PushStyleVar(ImGuiStyleVar_CellPadding, ImVec2(5, 5));
+    ImGui::PushStyleColor(ImGuiCol_TableHeaderBg, IM_COL32(40, 40, 40, 255));
+    ImGui::PushStyleColor(ImGuiCol_TableRowBg, IM_COL32(20, 20, 20, 255));
+    ImGui::PushStyleColor(ImGuiCol_TableRowBgAlt, IM_COL32(30, 30, 30, 255));
+
+    if (ImGui::BeginTable(label, 9, ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg | ImGuiTableFlags_Resizable)) {
+        ImGui::TableSetupColumn("Interface");
+        ImGui::TableSetupColumn("Bytes");
+        ImGui::TableSetupColumn("Packets");
+        ImGui::TableSetupColumn("Errs");
+        ImGui::TableSetupColumn("Drop");
+        ImGui::TableSetupColumn("Fifo");
+        ImGui::TableSetupColumn(isRX ? "Frame" : "Colls");
+        ImGui::TableSetupColumn("Compressed");
+        ImGui::TableSetupColumn(isRX ? "Multicast" : "Carrier");
+        ImGui::TableHeadersRow();
+
+        for (const auto& iface : interfaces) {
+            ImGui::TableNextRow();
+            ImGui::TableNextColumn();
+            ImGui::Text("%s", iface.name.c_str());
+            ImGui::TableNextColumn();
+            ImGui::Text("%lld", isRX ? iface.rx.bytes : iface.tx.bytes);
+            ImGui::TableNextColumn();
+            ImGui::Text("%lld", isRX ? iface.rx.packets : iface.tx.packets);
+            ImGui::TableNextColumn();
+            ImGui::Text("%lld", isRX ? iface.rx.errs : iface.tx.errs);
+            ImGui::TableNextColumn();
+            ImGui::Text("%lld", isRX ? iface.rx.drop : iface.tx.drop);
+            ImGui::TableNextColumn();
+            ImGui::Text("%lld", isRX ? iface.rx.fifo : iface.tx.fifo);
+            ImGui::TableNextColumn();
+            ImGui::Text("%lld", isRX ? iface.rx.frame : iface.tx.colls);
+            ImGui::TableNextColumn();
+            ImGui::Text("%lld", isRX ? iface.rx.compressed : iface.tx.compressed);
+            ImGui::TableNextColumn();
+            ImGui::Text("%lld", isRX ? iface.rx.multicast : iface.tx.carrier);
+        }
+        ImGui::EndTable();
+    }
+
+    ImGui::PopStyleColor(3);
+    ImGui::PopStyleVar();
+
+    ImGui::Spacing();
+    ImGui::PushStyleColor(ImGuiCol_Text, IM_COL32(0, 255, 255, 255));
+    ImGui::Text("%s Usage", label);
+    ImGui::PopStyleColor();
+
+    for (const auto& iface : interfaces) {
+        float usage = static_cast<float>(isRX ? iface.rx.bytes : iface.tx.bytes) / (30.0f * 1024 * 1024 * 1024);
+        std::string usageLabel = formatBytes(isRX ? iface.rx.bytes : iface.tx.bytes);
+        ImGui::Text("%s", iface.name.c_str());
+        ImGui::PushStyleColor(ImGuiCol_PlotHistogram, IM_COL32(0, 255, 255, 255));
+        ImGui::ProgressBar(usage, ImVec2(-1, 0), usageLabel.c_str());
+        ImGui::PopStyleColor();
     }
 }

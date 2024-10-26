@@ -1,34 +1,44 @@
 {
-    // Use IntelliSense to learn about possible attributes.
-    // Hover to view descriptions of existing attributes.
-    // For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
     "version": "0.2.0",
     "configurations": [
+        
         {
-            "name": "(gdb) Launch",
+            "name": "Debug and Run",
             "type": "cppdbg",
             "request": "launch",
-            "program": "${workspaceFolder}/monitor", // Change this to your executable's name
-            "args": [], // Add any command-line arguments your program needs
+            "program": "${workspaceFolder}/monitor",
+            "args": [],
             "stopAtEntry": false,
-            "cwd": "${workspaceFolder}", // Set current working directory to the workspace folder
+            "cwd": "${workspaceFolder}",
             "environment": [],
-            "externalConsole": false, // Set to true if you need an external console
+            "externalConsole": false,
             "MIMode": "gdb",
             "setupCommands": [
                 {
                     "description": "Enable pretty-printing for gdb",
                     "text": "-enable-pretty-printing",
                     "ignoreFailures": true
-                },
-                {
-                    "description": "Set Disassembly Flavor to Intel",
-                    "text": "-gdb-set disassembly-flavor intel",
-                    "ignoreFailures": true
                 }
             ],
-            "preLaunchTask": "build", // Optional: name of the build task to run before launching
-            "stopAtConnect": false
+            "preLaunchTask": "build"
+        }
+    ],
+    "tasks": [
+        {
+            "type": "shell",
+            "label": "build",
+            "command": "make",
+            "args": [],
+            "options": {
+                "cwd": "${workspaceFolder}"
+            },
+            "problemMatcher": [
+                "$gcc"
+            ],
+            "group": {
+                "kind": "build",
+                "isDefault": true
+            }
         }
     ]
 }

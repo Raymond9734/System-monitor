@@ -49,6 +49,7 @@
 #include <iterator>
 #include <stdexcept>
 #include <unordered_map>
+#include <queue>
 class CPUUsageCalculator;
 using namespace std;
 
@@ -69,6 +70,8 @@ struct ProcessInfo {
     std::string state;
     float cpuUsage;
     float memoryUsage;
+    std::chrono::steady_clock::time_point lastCpuUpdateTime;
+    bool isActive;
 };
 
 
@@ -112,6 +115,20 @@ std::vector<int> GetAllPIDs();
 // student TODO : network
 std::vector<NetworkInterface> getNetworkInfo();
 std::string formatBytes(long long bytes);
+void StartFetchingProcesses();
+void RenderNetworkTable(const char* label, const std::vector<NetworkInterface>& interfaces, bool isRX);
+class ProcessInfoQueue {
+private:
+    std::queue<ProcessInfo> queue;
+    std::mutex mutex;
+    std::condition_variable cond;
+
+public:
+    void push(ProcessInfo&& item);
+    bool try_pop(ProcessInfo& item);
+};
+extern ProcessInfoQueue g_completedProcesses;
+extern std::vector<ProcessInfo> updateProcessList;
 
 //Render  Functions
 void RenderSystemInfo();
