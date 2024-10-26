@@ -1,5 +1,6 @@
 #include "header.h"
-
+#include <queue>
+#include <condition_variable>
 
 
 // Function to get physical and virtual memory usage
@@ -68,88 +69,109 @@ void GetDiskUsage(float &diskUsedPercentage,std::string &usedStorageStr,std::str
     }
 }
 
-
 // Function to fetch process information concurrently
 ProcessInfo FetchProcessInfo(int pid) {
-    
     ProcessInfo process;
-    
     process.pid = pid;
+    process.isActive = false;  // Set to false by default
 
+    try {
+        // Fetch command line
+        std::string cmdPath = "/proc/" + std::to_string(pid) + "/cmdline";
+        std::ifstream cmdFile(cmdPath);
+        if (cmdFile) {
+            std::getline(cmdFile, process.name, '\0'); // Read until null character
+        } else {
+            throw std::runtime_error("Failed to read cmdline for PID " + std::to_string(pid));
+        }
 
-    // Fetch command line
-    std::string cmdPath = "/proc/" + std::to_string(pid) + "/cmdline";
-    std::ifstream cmdFile(cmdPath);
-    if (cmdFile) {
-        std::getline(cmdFile, process.name, '\0'); // Read until null character
-    } else {
-        std::cerr << "Failed to read cmdline for PID " << pid << std::endl;
-        return process; // Return with empty name
+        // Fetch process state
+        std::ifstream statFile("/proc/" + std::to_string(pid) + "/stat");
+        std::string state;
+        if (statFile) {
+            statFile >> pid >> process.name >> state;
+        } else {
+            throw std::runtime_error("Failed to read stat for PID " + std::to_string(pid));
+        }
+
+        // Determine process state
+        if (state == "I") {
+            process.state = "(Idle)";
+        } else if (state == "R") {
+            process.state = "Running";
+        } else if (state == "S") {
+            process.state = "Sleeping";
+        } else if (state == "D") {
+            process.state = "USleep";
+        } else if (state == "t") {
+            process.state = "Stopped";
+        } else if (state == "Z") {
+            process.state = "Zombie";
+        } else if (state == "X") {
+            process.state = "Dead";
+        } else {
+            process.state = "Unknown State";
+        }
+
+        // Fetch CPU and memory usage
+        process.cpuUsage = GetCPUUsage(pid);
+        if (process.cpuUsage < 0) {
+            process.name = "Unknown";
+            process.state = "Error";
+            process.cpuUsage = 0.0f;
+            process.memoryUsage = 0.0f;
+            process.isActive = false;
+            return process;
+        }
+        process.memoryUsage = GetMemUsage(pid);
+
+        // If we've made it this far without exceptions, the process is active
+        process.isActive = true;
+    } catch (const std::exception& e) {
+        // Log the error but don't throw, to prevent UI crashes
+        std::cerr << "Error fetching process info for PID " << pid << ": " << e.what() << std::endl;
+        // Set default values for the process info
+        process.name = "Unknown";
+        process.state = "Error";
+        process.cpuUsage = 0.0f;
+        process.memoryUsage = 0.0f;
+        process.isActive = false;
     }
-
-    // Fetch process state
-    std::ifstream statFile("/proc/" + std::to_string(pid) + "/stat");
-    std::string state;
-    if (statFile) {
-        statFile >> pid >> process.name >> state;
-    } else {
-        std::cerr << "Failed to read stat for PID " << pid << std::endl;
-        return process; // Return with empty state
-    }
-
-    // Determine process state
-    if (state == "I") {
-    process.state = "(Idle)";
-    } else if (state == "R") {
-        process.state = "Running";
-    } else if (state == "S") {
-        process.state = "Sleeping";
-    } else if (state == "D") {
-        process.state = "USleep";
-    } else if (state == "t") {
-        process.state = "Stopped";
-    } else if (state == "Z") {
-        process.state = "Zombie";
-    } else if (state == "X") {
-        process.state = "Dead";
-    } else {
-        process.state = "Unknown State";
-    }
-
-    // Fetch CPU and memory usage
-    process.cpuUsage = GetCPUUsage(pid);
-    process.memoryUsage = GetMemUsage(pid);
 
     return process;
 }
 
-std::vector<ProcessInfo> FetchProcessList() {
-    std::vector<ProcessInfo> processes;
-    
+void StartFetchingProcesses() {
     DIR* dir = opendir("/proc");
     if (!dir) {
         std::cerr << "Failed to open /proc directory." << std::endl;
-        return processes;
+        return;
     }
 
     struct dirent* entry;
-    std::vector<std::future<ProcessInfo>> futures;
+    std::vector<std::thread> threads;
 
     while ((entry = readdir(dir)) != nullptr) {
         std::string dirName(entry->d_name);
         if (entry->d_type == DT_DIR && isNumber(dirName)) {
             int pid = std::stoi(dirName);
-            futures.emplace_back(std::async(std::launch::async, FetchProcessInfo, pid));
-        }
-    }
-
-    for (auto& future : futures) {
-        ProcessInfo process = future.get();
-        if (!process.name.empty()) {
-            processes.push_back(process);
+            threads.emplace_back([pid]() {
+                try {
+                    ProcessInfo process = FetchProcessInfo(pid);
+                    g_completedProcesses.push(std::move(process));
+                } catch (const std::exception& e) {
+                    std::cerr << "Error processing PID " << pid << ": " << e.what() << std::endl;
+                }
+            });
         }
     }
 
     closedir(dir);
-    return processes;
+
+    // Join all threads to ensure they complete before function returns
+    for (auto& t : threads) {
+        if (t.joinable()) {
+            t.join();
+        }
+    }
 }
