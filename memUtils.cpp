@@ -215,7 +215,7 @@ float GetCPUUsage(int pid) {
     auto [total_time1, system_time1] = measure();
     if (total_time1 < 0 || system_time1 < 0) return -1.0;
 
-    std::this_thread::sleep_for(std::chrono::milliseconds(3000));  // 3-second interval
+    std::this_thread::sleep_for(std::chrono::milliseconds(3000));  // 1-second interval
 
     auto [total_time2, system_time2] = measure();
     if (total_time2 < 0 || system_time2 < 0) return -1.0;
@@ -232,8 +232,8 @@ float GetCPUUsage(int pid) {
         return -1.0;
     }
 
-    float total_time_diff = static_cast<float>(total_time2 - total_time1) / hertz;
-    float system_time_diff = static_cast<float>(system_time2 - system_time1) / hertz;
+    float total_time_diff = static_cast<float>(total_time2 - total_time1) ;
+    float system_time_diff = static_cast<float>(system_time2 - system_time1) ;
 
     if (system_time_diff <= 0) {
         std::cerr << "Invalid system time difference" << std::endl;
@@ -245,10 +245,6 @@ float GetCPUUsage(int pid) {
 
     // Multiply by the number of cores to match top's calculation
     cpuUsage *= numCores;
-
-    // if (pid == 476126) {
-    //     std::cout << "Pid: " << pid << " cpu usage: " << cpuUsage << std::endl;
-    // }
 
     return cpuUsage;
 }
