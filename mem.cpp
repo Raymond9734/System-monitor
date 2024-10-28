@@ -1,6 +1,8 @@
 #include "header.h"
 #include <queue>
 #include <condition_variable>
+#include <chrono>
+#include <thread>
 
 
 // Function to get physical and virtual memory usage
@@ -95,25 +97,14 @@ ProcessInfo FetchProcessInfo(int pid) {
         }
 
         // Determine process state
-        if (state == "I") {
-            process.state = "(Idle)";
-        } else if (state == "R") {
-            process.state = "Running";
-        } else if (state == "S") {
-            process.state = "Sleeping";
-        } else if (state == "D") {
-            process.state = "USleep";
-        } else if (state == "t") {
-            process.state = "Stopped";
-        } else if (state == "Z") {
-            process.state = "Zombie";
-        } else if (state == "X") {
-            process.state = "Dead";
-        } else {
-            process.state = "Unknown State";
-        }
+        process.state = (state == "R") ? "Running" :
+                        (state == "S") ? "Sleeping" :
+                        (state == "D") ? "Uninterruptible Sleep" :
+                        (state == "T") ? "Stopped" :
+                        (state == "t") ? "Tracing Stop" :
+                        (state == "Z") ? "Zombie" : "Unknown State";
 
-        // Fetch CPU and memory usage
+        // Fetch CPU usage
         process.cpuUsage = GetCPUUsage(pid);
         if (process.cpuUsage < 0) {
             process.name = "Unknown";
@@ -123,7 +114,7 @@ ProcessInfo FetchProcessInfo(int pid) {
             process.isActive = false;
             return process;
         }
-        process.memoryUsage = GetMemUsage(pid);
+        process.memoryUsage = GetMemUsage(pid); // Assuming GetMemUsage is defined elsewhere
 
         // If we've made it this far without exceptions, the process is active
         process.isActive = true;
@@ -140,38 +131,33 @@ ProcessInfo FetchProcessInfo(int pid) {
 
     return process;
 }
-
 void StartFetchingProcesses() {
-    DIR* dir = opendir("/proc");
-    if (!dir) {
-        std::cerr << "Failed to open /proc directory." << std::endl;
-        return;
-    }
-
-    struct dirent* entry;
-    std::vector<std::thread> threads;
-
-    while ((entry = readdir(dir)) != nullptr) {
-        std::string dirName(entry->d_name);
-        if (entry->d_type == DT_DIR && isNumber(dirName)) {
-            int pid = std::stoi(dirName);
-            threads.emplace_back([pid]() {
-                try {
-                    ProcessInfo process = FetchProcessInfo(pid);
-                    g_completedProcesses.push(std::move(process));
-                } catch (const std::exception& e) {
-                    std::cerr << "Error processing PID " << pid << ": " << e.what() << std::endl;
-                }
-            });
+    while (true) { // Infinite loop to keep fetching processes
+        DIR* dir = opendir("/proc");
+        if (!dir) {
+            std::cerr << "Failed to open /proc directory." << std::endl;
+            return;
         }
-    }
 
-    closedir(dir);
+        struct dirent* entry;
 
-    // Join all threads to ensure they complete before function returns
-    for (auto& t : threads) {
-        if (t.joinable()) {
-            t.join();
+        while ((entry = readdir(dir)) != nullptr) {
+            std::string dirName(entry->d_name);
+            if (entry->d_type == DT_DIR && isNumber(dirName)) {
+                int pid = std::stoi(dirName);
+                // Launch thread and detach immediately so it can send results independently
+                std::thread([pid]() {
+                    try {
+                        ProcessInfo process = FetchProcessInfo(pid);
+                        g_completedProcesses.push(std::move(process));
+                    } catch (const std::exception& e) {
+                        std::cerr << "Error processing PID " << pid << ": " << e.what() << std::endl;
+                    }
+                }).detach();
+            }
         }
+
+        closedir(dir);
+        std::this_thread::sleep_for(std::chrono::milliseconds(2000)); // Delay for 3 seconds
     }
 }
