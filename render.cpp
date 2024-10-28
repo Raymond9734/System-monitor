@@ -245,50 +245,50 @@ void RenderProcessMonitorUI() {
     auto currentTime = std::chrono::steady_clock::now();
     auto elapsedTime = std::chrono::duration_cast<std::chrono::seconds>(currentTime - lastFetchTime).count();
 
-    if (!isFetching && elapsedTime >= 0) {
+    // Start fetching if not already fetching and enough time has elapsed
+    if (!isFetching && elapsedTime >= 2) { // Changed to 2 seconds to match StartFetchingProcesses delay
         isFetching = true;
         lastFetchTime = currentTime;
         g_isFetchingProcesses.store(true);
         std::thread([]() {
             g_totalProcesses.store(0);
-            StartFetchingProcesses();
+            StartFetchingProcesses(); // This now runs continuously in its own thread
             g_isFetchingProcesses.store(false);
         }).detach();
     }
 
-    std::vector<ProcessInfo> newProcesses;
+    // Process any new results immediately
     ProcessInfo newProcess;
-    bool updatedList = false;
     while (g_completedProcesses.try_pop(newProcess)) {
         if (newProcess.cpuUsage > -1) {
-            newProcesses.push_back(std::move(newProcess));
+            std::lock_guard<std::mutex> lock(processListMutex);
+            
+            // Try to find and update existing process
+            auto it = std::find_if(displayProcessList.begin(), displayProcessList.end(),
+                                 [&](const ProcessInfo& p) { return p.pid == newProcess.pid; });
+            
+            if (it != displayProcessList.end()) {
+                *it = newProcess;
+            } else {
+                displayProcessList.push_back(newProcess);
+            }
+            
+            g_totalProcesses.store(displayProcessList.size());
         }
     }
 
+    // Clean up inactive processes
     {
         std::lock_guard<std::mutex> lock(processListMutex);
-        for (const auto& process : newProcesses) {
-            auto it = std::find_if(displayProcessList.begin(), displayProcessList.end(),
-                                   [&](const ProcessInfo& p) { return p.pid == process.pid; });
-            if (it != displayProcessList.end()) {
-                *it = process;
-                updatedList = true;
-            } else {
-                displayProcessList.push_back(process);
-            }
-        }
-        g_totalProcesses.store(displayProcessList.size());
-    }
-    
-    displayProcessList.erase(
-        std::remove_if(displayProcessList.begin(), displayProcessList.end(),
-                       [](const ProcessInfo& p) { return p.cpuUsage <= -1 || !p.isActive; }),
-        displayProcessList.end()
-    );
+        displayProcessList.erase(
+            std::remove_if(displayProcessList.begin(), displayProcessList.end(),
+                          [](const ProcessInfo& p) { return p.cpuUsage <= -1 || !p.isActive; }),
+            displayProcessList.end()
+        );
 
-    if (updatedList) {
-        std::sort(displayProcessList.begin(), displayProcessList.end(), 
-                  [](const ProcessInfo& a, const ProcessInfo& b) { return a.pid < b.pid; });
+        // Sort by PID
+        std::sort(displayProcessList.begin(), displayProcessList.end(),
+                 [](const ProcessInfo& a, const ProcessInfo& b) { return a.pid < b.pid; });
     }
 
     if (!g_isFetchingProcesses.load()) {
