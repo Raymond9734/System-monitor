@@ -68,6 +68,8 @@ void GetDiskUsage(float &diskUsedPercentage,std::string &usedStorageStr,std::str
         // Handle any exceptions that occur during disk usage retrieval
         std::cerr << "Error retrieving disk usage: " << e.what() << std::endl;
         diskUsedPercentage = 0.0f;  // Set to 0 in case of error
+        usedStorageStr = "N/A";
+        totalStorageStr = "N/A";
     }
 }
 
@@ -76,88 +78,116 @@ ProcessInfo FetchProcessInfo(int pid) {
     ProcessInfo process;
     process.pid = pid;
     process.isActive = false;  // Set to false by default
+    process.name = "Unknown";  // Initialize with default values
+    process.state = "Unknown";
+    process.cpuUsage = 0.0f;
+    process.memoryUsage = 0.0f;
 
     try {
+        if (pid <= 0) {
+            throw std::runtime_error("Invalid PID");
+        }
+
         // Fetch command line
         std::string cmdPath = "/proc/" + std::to_string(pid) + "/cmdline";
         std::ifstream cmdFile(cmdPath);
-        if (cmdFile) {
-            std::getline(cmdFile, process.name, '\0'); // Read until null character
-        } else {
-            throw std::runtime_error("Failed to read cmdline for PID " + std::to_string(pid));
+        std::string cmdLine;
+        if (cmdFile && std::getline(cmdFile, cmdLine, '\0')) {
+            if (!cmdLine.empty()) {
+                // Extract just the command name without path
+                size_t lastSlash = cmdLine.find_last_of('/');
+                if (lastSlash != std::string::npos) {
+                    process.name = cmdLine.substr(lastSlash + 1);
+                } else {
+                    process.name = cmdLine;
+                }
+            }
         }
 
-        // Fetch process state
-        std::ifstream statFile("/proc/" + std::to_string(pid) + "/stat");
-        std::string state;
-        if (statFile) {
-            statFile >> pid >> process.name >> state;
-        } else {
-            throw std::runtime_error("Failed to read stat for PID " + std::to_string(pid));
+        // Fetch process state and name from stat file
+        std::string statPath = "/proc/" + std::to_string(pid) + "/stat";
+        std::ifstream statFile(statPath);
+        std::string line;
+        
+        if (statFile && std::getline(statFile, line)) {
+            size_t firstParen = line.find('(');
+            size_t lastParen = line.rfind(')');
+            
+            if (firstParen != std::string::npos && lastParen != std::string::npos && 
+                firstParen < lastParen && lastParen + 2 < line.length()) {
+                
+                // Extract name between parentheses if cmdline was empty
+                if (process.name == "Unknown") {
+                    process.name = line.substr(firstParen + 1, lastParen - firstParen - 1);
+                }
+                
+                // Extract state which comes after the closing parenthesis
+                std::istringstream iss(line.substr(lastParen + 2)); // +2 to skip ') '
+                std::string state;
+                if (iss >> state) {
+                    process.state = state;
+                }
+            }
         }
 
-        // Determine process state
-        process.state = (state == "R") ? "Running" :
-                        (state == "S") ? "Sleeping" :
-                        (state == "D") ? "Uninterruptible Sleep" :
-                        (state == "T") ? "Stopped" :
-                        (state == "t") ? "Tracing Stop" :
-                        (state == "Z") ? "Zombie" : "Unknown State";
-
-        // Fetch CPU usage
-        process.cpuUsage = GetCPUUsage(pid);
-        if (process.cpuUsage < 0) {
-            process.name = "Unknown";
-            process.state = "Error";
-            process.cpuUsage = 0.0f;
-            process.memoryUsage = 0.0f;
-            process.isActive = false;
-            return process;
+        // Fetch CPU and memory usage
+        float cpuUsage = GetCPUUsage(pid);
+        if (cpuUsage >= 0.0f) {
+            process.cpuUsage = cpuUsage;
+            process.memoryUsage = GetMemUsage(pid);
+            process.isActive = true;
         }
-        process.memoryUsage = GetMemUsage(pid); // Assuming GetMemUsage is defined elsewhere
 
-        // If we've made it this far without exceptions, the process is active
-        process.isActive = true;
     } catch (const std::exception& e) {
-        // Log the error but don't throw, to prevent UI crashes
         std::cerr << "Error fetching process info for PID " << pid << ": " << e.what() << std::endl;
-        // Set default values for the process info
-        process.name = "Unknown";
-        process.state = "Error";
-        process.cpuUsage = 0.0f;
-        process.memoryUsage = 0.0f;
-        process.isActive = false;
     }
 
     return process;
 }
 void StartFetchingProcesses() {
-    while (true) { // Infinite loop to keep fetching processes
+    std::atomic<int> activeThreads(0);
+    std::vector<int> pids;
+    pids.reserve(1000); // Pre-allocate reasonable initial capacity
+
+    while (true) {
+        pids.clear(); // Reuse vector instead of recreating
+
+        // Use raw pointer for faster directory access
         DIR* dir = opendir("/proc");
         if (!dir) {
             std::cerr << "Failed to open /proc directory." << std::endl;
-            return;
+            std::this_thread::sleep_for(std::chrono::milliseconds(100)); // Reduced sleep time
+            continue;
         }
 
         struct dirent* entry;
-
         while ((entry = readdir(dir)) != nullptr) {
-            std::string dirName(entry->d_name);
-            if (entry->d_type == DT_DIR && isNumber(dirName)) {
-                int pid = std::stoi(dirName);
-                // Launch thread and detach immediately so it can send results independently
-                std::thread([pid]() {
+            if (entry->d_type == DT_DIR && isNumber(entry->d_name)) {
+                pids.push_back(std::stoi(entry->d_name));
+            }
+        }
+        closedir(dir);
+
+        // Process PIDs in batches
+        const int BATCH_SIZE = 50;
+        for (size_t i = 0; i < pids.size(); i += BATCH_SIZE) {
+            size_t end = std::min(i + BATCH_SIZE, pids.size());
+            
+            // Launch batch of threads
+            for (size_t j = i; j < end; j++) {
+                activeThreads++;
+                std::thread([pid = pids[j], &activeThreads]() {
                     try {
                         ProcessInfo process = FetchProcessInfo(pid);
                         g_completedProcesses.push(std::move(process));
-                    } catch (const std::exception& e) {
-                        std::cerr << "Error processing PID " << pid << ": " << e.what() << std::endl;
-                    }
+                    } catch (...) { /* Silently ignore errors */ }
+                    activeThreads--;
                 }).detach();
             }
+
         }
 
-        closedir(dir);
-        std::this_thread::sleep_for(std::chrono::milliseconds(2000)); // Delay for 3 seconds
+        // Only sleep for minimal time since GetCPUUsage already has 3s sleep
+        std::this_thread::sleep_for(std::chrono::milliseconds(2000));
     }
 }
