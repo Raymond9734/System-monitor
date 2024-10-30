@@ -160,7 +160,7 @@ float GetCPUUsage(int pid) {
     auto measure = [&]() -> std::pair<long, long> {
         std::ifstream statFile(statPath);
         if (!statFile.is_open()) {
-            std::cerr << "Could not open file: " << statPath << std::endl;
+            // std::cerr << "Could not open file: " << statPath << std::endl;
             return {-1, -1};
         }
 
