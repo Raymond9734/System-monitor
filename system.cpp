@@ -9,26 +9,30 @@
     #include <fstream>
 #endif
   
-
-// get cpu id and information, you can use `proc/cpuinfo`
+/**
+ * Gets CPU identification and information by querying CPU directly
+ * Uses CPUID instruction to get CPU brand string
+ * Works on x86/x64 processors that support CPUID
+ * 
+ * @return CPU brand string containing model name and details
+ */
 string CPUinfo()
 {
     char CPUBrandString[0x40];
     unsigned int CPUInfo[4] = {0, 0, 0, 0};
 
-    // unix system
-    // for windoes maybe we must add the following
-    // __cpuid(regs, 0);
-    // regs is the array of 4 positions
+    // Get number of extended CPUID functions
     __cpuid(0x80000000, CPUInfo[0], CPUInfo[1], CPUInfo[2], CPUInfo[3]);
     unsigned int nExIds = CPUInfo[0];
 
     memset(CPUBrandString, 0, sizeof(CPUBrandString));
 
+    // Get CPU brand string by calling CPUID with extended function codes
     for (unsigned int i = 0x80000000; i <= nExIds; ++i)
     {
         __cpuid(i, CPUInfo[0], CPUInfo[1], CPUInfo[2], CPUInfo[3]);
 
+        // CPU brand string is split across three CPUID calls
         if (i == 0x80000002)
             memcpy(CPUBrandString, CPUInfo, sizeof(CPUInfo));
         else if (i == 0x80000003)
@@ -40,7 +44,12 @@ string CPUinfo()
     return str;
 }
 
-// getOsName, this will get the OS of the current computer
+/**
+ * Detects and returns the operating system name
+ * Uses preprocessor macros to identify the OS at compile time
+ * 
+ * @return String containing the OS name
+ */
 const char *getOsName()
 {
 #ifdef _WIN32
@@ -60,7 +69,12 @@ const char *getOsName()
 #endif
 }
 
-//function to get usernam
+/**
+ * Gets the currently logged in username
+ * Uses platform-specific APIs to retrieve the username
+ * 
+ * @return String containing the username
+ */
 std::string getLoggedInUser() {
 
     #ifdef _WIN32
@@ -75,7 +89,12 @@ std::string getLoggedInUser() {
 #endif
 }
 
-//Function to get HostName
+/**
+ * Gets the system hostname
+ * Uses gethostname() system call
+ * 
+ * @return String containing the hostname, or NULL on error
+ */
 std::string getHostName(){
     char hostName[1024];
     if (gethostname(hostName,sizeof(hostName))!= 0){
@@ -85,7 +104,14 @@ std::string getHostName(){
     return std::string(hostName);
 }
 
-//Function to get total processes
+/**
+ * Gets total number of processes running on the system
+ * Uses platform-specific methods:
+ * - Windows: ToolHelp API to enumerate processes
+ * - Linux: Reads from /proc/stat
+ * 
+ * @return Total number of processes
+ */
 int getTotalProcesses() {
     int totalProcesses = 0;
     #ifdef _WIN32
@@ -125,6 +151,14 @@ int getTotalProcesses() {
     return totalProcesses;
 #endif   
 }
+
+/**
+ * Gets CPU information based on platform
+ * Windows: Returns number of processors
+ * Linux: Returns CPU model name from /proc/cpuinfo
+ * 
+ * @return String containing CPU info
+ */
 std::string getCpuInfo() {
     #ifdef _WIN32
         SYSTEM_INFO sysInfo;
@@ -143,7 +177,13 @@ std::string getCpuInfo() {
 #endif
 }
 
-//function to get CPU Load
+/**
+ * Calculates current CPU load percentage
+ * Reads CPU time statistics from /proc/stat
+ * Compares current values with previous values to calculate load
+ * 
+ * @return CPU load as percentage (0-100)
+ */
 float GetCPULoad() {
     std::ifstream file("/proc/stat");
     std::string line;
@@ -181,7 +221,12 @@ float GetCPULoad() {
     return 0.0f;
 }
 
-//Function to get Fan Speed
+/**
+ * Gets current fan speed
+ * Reads from hwmon sysfs interface
+ * 
+ * @return Fan speed in RPM
+ */
 float GetFanSPeed(){
     std::ifstream file("/sys/class/hwmon/hwmon5/fan1_input");
     float fanSpeed = 0.0f;
@@ -191,7 +236,12 @@ float GetFanSPeed(){
     return fanSpeed;
 }
 
-//function to get Temprature
+/**
+ * Gets current CPU temperature
+ * Reads from thermal zone sysfs interface
+ * 
+ * @return Temperature in degrees Celsius
+ */
 float GetTemprature(){
     std::ifstream file("/sys/class/thermal/thermal_zone0/temp");
     float temprature = 0.0f;

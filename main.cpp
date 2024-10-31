@@ -1,6 +1,8 @@
+// Include necessary headers
 #include "header.h"
 #include <SDL.h>
 
+// OpenGL loader configuration - choose loader based on preprocessor definitions
 #if defined(IMGUI_IMPL_OPENGL_LOADER_GL3W)
 #include <GL/gl3w.h> // Initialize with gl3wInit()
 #elif defined(IMGUI_IMPL_OPENGL_LOADER_GLEW)
@@ -22,13 +24,24 @@ using namespace gl;
 #else
 #include IMGUI_IMPL_OPENGL_LOADER_CUSTOM
 #endif
+
+/**
+ * Loads fonts for ImGui interface
+ * Adds default font and custom Poppins font
+ */
 void LoadFonts() {
     ImGuiIO& io = ImGui::GetIO();
     io.Fonts->AddFontDefault();
     // Add other fonts as needed
     io.Fonts->AddFontFromFileTTF("./fonts/Poppins-Regular.ttf", 20.0f);
 }
-// systemWindow, display information for the system monitorization
+
+/**
+ * Creates and renders the system monitoring window
+ * @param id Window identifier string
+ * @param size Window dimensions
+ * @param position Window position coordinates
+ */
 void systemWindow(const char *id, ImVec2 size, ImVec2 position)
 {
     ImGui::Begin(id);
@@ -40,6 +53,11 @@ void systemWindow(const char *id, ImVec2 size, ImVec2 position)
 
     ImGui::End();
 }
+
+/**
+ * Configures the ImGui visual style
+ * Sets up modern style with custom colors and spacing
+ */
 void SetupImGuiStyle()
 {
     ImGuiStyle& style = ImGui::GetStyle();
@@ -114,7 +132,12 @@ void SetupImGuiStyle()
     colors[ImGuiCol_ModalWindowDimBg] = ImVec4(0.80f, 0.80f, 0.80f, 0.35f);
 }
 
-// memoryProcessesWindow, display information for the memory and processes information
+/**
+ * Creates and renders the memory and processes monitoring window
+ * @param id Window identifier string
+ * @param size Window dimensions
+ * @param position Window position coordinates
+ */
 void memoryProcessesWindow(const char *id, ImVec2 size, ImVec2 position)
 {
     ImGui::Begin(id);
@@ -127,7 +150,12 @@ void memoryProcessesWindow(const char *id, ImVec2 size, ImVec2 position)
     ImGui::End();
 }
 
-// network, display information network information
+/**
+ * Creates and renders the network monitoring window
+ * @param id Window identifier string
+ * @param size Window dimensions
+ * @param position Window position coordinates
+ */
 void networkWindow(const char *id, ImVec2 size, ImVec2 position)
 {
     ImGui::Begin(id);
@@ -139,7 +167,11 @@ void networkWindow(const char *id, ImVec2 size, ImVec2 position)
     ImGui::End();
 }
 
-// Main code
+/**
+ * Main program entry point
+ * Initializes SDL, OpenGL and ImGui
+ * Handles main application loop and cleanup
+ */
 int main(int, char **)
 {
     // Setup SDL
@@ -209,7 +241,7 @@ int main(int, char **)
     // note : you are free to change the style of the application
     ImVec4 clear_color = ImVec4(0.0f, 0.0f, 0.0f, 0.0f);
     
-    // Main loop
+    // Main application loop
     bool done = false;
     while (!done)
     {
@@ -233,6 +265,7 @@ int main(int, char **)
         ImGui_ImplSDL2_NewFrame(window);
         ImGui::NewFrame();
 
+        // Create the main application windows
         {
             ImVec2 mainDisplay = io.DisplaySize;
             

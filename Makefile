@@ -10,11 +10,17 @@
 #   pacman -S mingw-w64-i686-SDL2
 #
 
+# Compiler selection (uncomment one)
 #CXX = g++
 #CXX = clang++
 
+# Output executable name
 EXE = monitor
+
+# Directory containing ImGui library files
 IMGUI_DIR = imgui/lib/
+
+# Source files
 SOURCES = main.cpp
 SOURCES += system.cpp
 SOURCES += mem.cpp
@@ -25,14 +31,19 @@ SOURCES += netUtils.cpp
 SOURCES += ProcessInfoQueue.cpp
 SOURCES += $(IMGUI_DIR)/imgui.cpp $(IMGUI_DIR)/imgui_demo.cpp $(IMGUI_DIR)/imgui_draw.cpp $(IMGUI_DIR)/imgui_tables.cpp $(IMGUI_DIR)/imgui_widgets.cpp
 SOURCES += $(IMGUI_DIR)/backend/imgui_impl_sdl.cpp $(IMGUI_DIR)/backend/imgui_impl_opengl3.cpp
+
+# Generate object file names from source files
 OBJS = $(addsuffix .o, $(basename $(notdir $(SOURCES))))
+
+# Detect operating system
 UNAME_S := $(shell uname -s)
 
+# Compiler flags
 CXXFLAGS = -I$(IMGUI_DIR) -I$(IMGUI_DIR)/backend
 CXXFLAGS += -g -Wall -Wformat
 LIBS =
 
-# Colors for output
+# ANSI color codes for build output
 COLOR_GREEN=\033[0;32m
 COLOR_RED=\033[0;31m
 COLOR_RESET=\033[0m
@@ -41,29 +52,29 @@ COLOR_RESET=\033[0m
 ## OPENGL LOADER
 ##---------------------------------------------------------------------
 
-## Using OpenGL loader: gl3w [default]
+# Using OpenGL loader: gl3w [default]
 SOURCES += imgui/lib/gl3w/GL/gl3w.c
 CXXFLAGS += -I imgui/lib/gl3w -DIMGUI_IMPL_OPENGL_LOADER_GL3W
 
-## Using OpenGL loader: glew
-## (This assumes a system-wide installation)
+# Using OpenGL loader: glew
+# (This assumes a system-wide installation)
 # CXXFLAGS += -DIMGUI_IMPL_OPENGL_LOADER_GLEW
 # LIBS += -lGLEW
 
-## Using OpenGL loader: glad
+# Using OpenGL loader: glad
 # SOURCES += ../libs/glad/src/glad.c
 # CXXFLAGS += -I../libs/glad/include -DIMGUI_IMPL_OPENGL_LOADER_GLAD
 
-## Using OpenGL loader: glad2
+# Using OpenGL loader: glad2
 # SOURCES += ../libs/glad/src/gl.c
 # CXXFLAGS += -I../libs/glad/include -DIMGUI_IMPL_OPENGL_LOADER_GLAD2
 
-## Using OpenGL loader: glbinding
-## This assumes a system-wide installation
-## of either version 3.0.0 (or newer)
+# Using OpenGL loader: glbinding
+# This assumes a system-wide installation
+# of either version 3.0.0 (or newer)
 # CXXFLAGS += -DIMGUI_IMPL_OPENGL_LOADER_GLBINDING3
 # LIBS += -lglbinding
-## or the older version 2.x
+# or the older version 2.x
 # CXXFLAGS += -DIMGUI_IMPL_OPENGL_LOADER_GLBINDING2
 # LIBS += -lglbinding
 
@@ -71,6 +82,7 @@ CXXFLAGS += -I imgui/lib/gl3w -DIMGUI_IMPL_OPENGL_LOADER_GL3W
 ## BUILD FLAGS PER PLATFORM
 ##---------------------------------------------------------------------
 
+# Linux-specific flags
 ifeq ($(UNAME_S), Linux) #LINUX
 	ECHO_MESSAGE = "Linux"
 	LIBS += -lGL -ldl `sdl2-config --libs`
@@ -79,6 +91,7 @@ ifeq ($(UNAME_S), Linux) #LINUX
 	CFLAGS = $(CXXFLAGS)
 endif
 
+# macOS-specific flags
 ifeq ($(UNAME_S), Darwin) #APPLE
 	ECHO_MESSAGE = "Mac OS X"
 	LIBS += -framework OpenGL -framework Cocoa -framework IOKit -framework CoreVideo `sdl2-config --libs`
@@ -89,6 +102,7 @@ ifeq ($(UNAME_S), Darwin) #APPLE
 	CFLAGS = $(CXXFLAGS)
 endif
 
+# MinGW-specific flags
 ifeq ($(findstring MINGW,$(UNAME_S)),MINGW)
    ECHO_MESSAGE = "MinGW"
    LIBS += -lgdi32 -lopengl32 -limm32 `pkg-config --static --libs sdl2`
@@ -101,36 +115,44 @@ endif
 ## BUILD RULES
 ##---------------------------------------------------------------------
 
+# Rule for building C++ source files
 %.o:%.cpp
 	$(CXX) $(CXXFLAGS) -c -o $@ $<
 
+# Rule for building ImGui source files
 %.o:$(IMGUI_DIR)/%.cpp
 	$(CXX) $(CXXFLAGS) -c -o $@ $<
 
+# Rule for building ImGui backend files
 %.o:$(IMGUI_DIR)/backend/%.cpp
 	$(CXX) $(CXXFLAGS) -c -o $@ $<
 
+# Rule for building gl3w source files
 %.o:imgui/lib/gl3w/GL/%.c
 	$(CC) $(CFLAGS) -c -o $@ $<
 
+# Rule for building glad source files
 %.o:imgui/lib/glad/src/%.c
 	$(CC) $(CFLAGS) -c -o $@ $<
 
+# Default target - builds executable, cleans up, and runs
 all: $(EXE) clean run
 	@echo -e "$(COLOR_GREEN)Build complete for $(ECHO_MESSAGE)$(COLOR_RESET)"
 
+# Link object files to create executable
 $(EXE): $(OBJS)
 	$(CXX) -o $@ $^ $(CXXFLAGS) $(LIBS)
 	@if [ $$? -eq 0 ]; then echo -e "$(COLOR_GREEN)Executable built successfully$(COLOR_RESET)"; else echo -e "$(COLOR_RED)Build failed$(COLOR_RESET)"; exit 1; fi
 
+# Clean up object files
 clean:
 	rm -f $(OBJS)
 	@echo -e "$(COLOR_GREEN)Cleaned up$(COLOR_RESET)"
 
-# Run target
+# Run the executable
 run: $(EXE)
 	@./$(EXE) || echo -e "$(COLOR_RED)Error occurred while running $(EXE)$(COLOR_RESET)"
 	@echo -e "\n"
 
-# Phony targets
+# Declare phony targets
 .PHONY: all clean run
